@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="MqttPulse.App/MqttPulse.App.csproj" />
+  <Project Path="MqttPulse.Core/MqttPulse.Core.csproj" />
+  <Project Path="MqttPulse.Tests/MqttPulse.Tests.csproj" />
+</Solution>
