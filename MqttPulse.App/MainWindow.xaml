@@ -14,15 +14,21 @@
         MinWidth="1100"
         Background="#EEF3F2"
         FontFamily="Segoe UI"
-        FontSize="13">
+        FontSize="13"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        TextOptions.TextHintingMode="Fixed">
     <Window.Resources>
         <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
         <SolidColorBrush x:Key="CanvasBrush" Color="#EEF3F2" />
         <SolidColorBrush x:Key="SurfaceAltBrush" Color="#F5F8F7" />
-        <SolidColorBrush x:Key="BorderBrushSoft" Color="#D5DFDD" />
-        <SolidColorBrush x:Key="BorderBrushStrong" Color="#B8C8C5" />
+        <SolidColorBrush x:Key="BorderBrushSoft" Color="#C7D3D1" />
+        <SolidColorBrush x:Key="BorderBrushStrong" Color="#91A8A4" />
+        <SolidColorBrush x:Key="InputBorderBrush" Color="#AABCB8" />
         <SolidColorBrush x:Key="InkBrush" Color="#14201E" />
-        <SolidColorBrush x:Key="MutedBrush" Color="#536763" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#3F5652" />
         <SolidColorBrush x:Key="AccentBrush" Color="#176E63" />
         <SolidColorBrush x:Key="AccentHoverBrush" Color="#105B52" />
         <SolidColorBrush x:Key="AccentSoftBrush" Color="#E3F0ED" />
@@ -45,6 +51,7 @@
         <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="15" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#173B37" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
@@ -55,7 +62,7 @@
         </Style>
 
         <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="12.5" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
             <Setter Property="Margin" Value="0,0,0,5" />
@@ -74,7 +81,7 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
             <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource InputBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Background" Value="White" />
             <Style.Triggers>
@@ -97,7 +104,7 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
             <Setter Property="Background" Value="White" />
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource InputBorderBrush}" />
             <Style.Triggers>
                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
                     <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
@@ -209,6 +216,7 @@
         <Style TargetType="TreeViewItem">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
             <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
             <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
         </Style>
@@ -296,7 +304,7 @@
                 <TextBlock Grid.Row="1"
                            Text="{Binding DetailText}"
                            Foreground="{StaticResource MutedBrush}"
-                           FontSize="11"
+                           FontSize="12"
                            TextTrimming="CharacterEllipsis" />
             </Grid>
         </HierarchicalDataTemplate>
@@ -627,15 +635,21 @@
 
         <Grid Visibility="{Binding ConnectionManagerVisibility}"
               Background="#B3182422">
-            <Border Width="1040"
-                    Height="680"
-                    Background="White"
-                    BorderBrush="{StaticResource BorderBrushStrong}"
-                    BorderThickness="1"
-                    CornerRadius="8"
-                    Effect="{StaticResource ModalShadow}"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center">
+            <Grid Width="1040"
+                  Height="680"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  UseLayoutRounding="True"
+                  SnapsToDevicePixels="True">
+                <Border Background="White"
+                        CornerRadius="8"
+                        Effect="{StaticResource ModalShadow}"
+                        IsHitTestVisible="False" />
+                <Border Background="White"
+                        BorderBrush="{StaticResource BorderBrushStrong}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        SnapsToDevicePixels="True">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="58" />
@@ -667,7 +681,7 @@
 
                     <Border Grid.Row="1"
                             Grid.Column="0"
-                            Background="{StaticResource SurfaceAltBrush}"
+                            Background="#F0F5F4"
                             Padding="16">
                         <Grid>
                             <Grid.RowDefinitions>
@@ -970,17 +984,26 @@
                         </StackPanel>
                     </Border>
                 </Grid>
-            </Border>
+                </Border>
+            </Grid>
         </Grid>
         <Grid Visibility="{Binding PeriodCheckVisibility}"
               Background="#B3182422">
-            <Border Width="920"
-                    Height="650"
-                    Background="White"
-                    CornerRadius="8"
-                    Effect="{StaticResource ModalShadow}"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center">
+            <Grid Width="920"
+                  Height="650"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  UseLayoutRounding="True"
+                  SnapsToDevicePixels="True">
+                <Border Background="White"
+                        CornerRadius="8"
+                        Effect="{StaticResource ModalShadow}"
+                        IsHitTestVisible="False" />
+                <Border Background="White"
+                        BorderBrush="{StaticResource BorderBrushStrong}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        SnapsToDevicePixels="True">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="58" />
@@ -1134,7 +1157,8 @@
                         </Grid>
                     </Grid>
                 </Grid>
-            </Border>
+                </Border>
+            </Grid>
         </Grid>
     </Grid>
 </Window>
