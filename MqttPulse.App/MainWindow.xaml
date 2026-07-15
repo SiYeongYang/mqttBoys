@@ -336,11 +336,15 @@
                                Width="28"
                                Height="28"
                                Margin="0,0,9,0" />
-                        <TextBlock Text="mqttBoys"
-                                   Foreground="White"
-                                   FontSize="19"
-                                   FontWeight="SemiBold"
-                                   VerticalAlignment="Center" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="mqttBoys"
+                                       Foreground="White"
+                                       FontSize="18"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding AppVersionText}"
+                                       Foreground="#A9C0BC"
+                                       FontSize="10.5" />
+                        </StackPanel>
                     </StackPanel>
 
                     <Button Grid.Column="1"

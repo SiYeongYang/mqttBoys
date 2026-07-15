@@ -127,6 +127,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<PeriodCheckHistoryItemViewModel> PeriodCheckHistory { get; } = new();
 
+    public string AppVersionText { get; } = CreateAppVersionText();
+
     public IReadOnlyList<int> QosOptions { get; } = new[] { 0, 1, 2 };
 
     public IReadOnlyList<string> TransportOptions { get; } = new[] { "mqtt", "ws", "wss" };
@@ -1576,6 +1578,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         while (_periodCheckSamples.TryDequeue(out _))
         {
         }
+    }
+
+    private static string CreateAppVersionText()
+    {
+        var version = typeof(MainViewModel).Assembly.GetName().Version;
+        return version is null
+            ? "version unavailable"
+            : $"v{version.Major}.{version.Minor}.{version.Build}";
     }
 
     private static string FormatPayloadForDetail(MqttMessageSnapshot message) =>
