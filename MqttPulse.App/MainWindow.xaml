@@ -987,7 +987,9 @@
                 </Border>
             </Grid>
         </Grid>
-        <Grid Visibility="{Binding PeriodCheckVisibility}"
+        <Grid x:Name="PeriodCheckPanel"
+              Visibility="{Binding PeriodCheckVisibility}"
+              IsVisibleChanged="PeriodCheckPanel_IsVisibleChanged"
               Background="#B3182422">
             <Grid Width="920"
                   Height="650"
@@ -1058,17 +1060,78 @@
                                        Grid.Column="0"
                                        Text="토픽"
                                        Style="{StaticResource FieldLabelStyle}" />
-                            <ComboBox x:Name="PeriodTopicCombo"
-                                      Grid.Row="1"
-                                      Grid.Column="0"
-                                      ItemsSource="{Binding PeriodCheckTopicSuggestions}"
-                                      Text="{Binding PeriodCheckTopicText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                      IsEditable="True"
-                                      IsTextSearchEnabled="False"
-                                      StaysOpenOnEdit="True"
-                                      MaxDropDownHeight="260"
-                                      IsEnabled="{Binding IsPeriodCheckIdle}"
-                                      PreviewKeyUp="PeriodTopicCombo_PreviewKeyUp" />
+                            <Grid x:Name="PeriodTopicInputHost"
+                                  Grid.Row="1"
+                                  Grid.Column="0">
+                                <TextBox x:Name="PeriodTopicInput"
+                                         Text="{Binding PeriodCheckTopicText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Padding="9,5,36,5"
+                                         IsEnabled="{Binding IsPeriodCheckIdle}"
+                                         TextChanged="PeriodTopicInput_TextChanged"
+                                         GotKeyboardFocus="PeriodTopicInput_GotKeyboardFocus"
+                                         PreviewKeyDown="PeriodTopicInput_PreviewKeyDown" />
+                                <Button HorizontalAlignment="Right"
+                                        VerticalAlignment="Stretch"
+                                        Width="34"
+                                        MinHeight="0"
+                                        Padding="0"
+                                        Content="▼"
+                                        FontSize="9"
+                                        Foreground="{StaticResource MutedBrush}"
+                                        Style="{StaticResource QuietButtonStyle}"
+                                        ToolTip="토픽 목록 열기"
+                                        Click="PeriodTopicDropButton_Click" />
+                                <Popup x:Name="PeriodTopicPopup"
+                                       PlacementTarget="{Binding ElementName=PeriodTopicInputHost}"
+                                       DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                       Placement="Bottom"
+                                       VerticalOffset="2"
+                                       AllowsTransparency="True"
+                                       StaysOpen="False"
+                                       Focusable="False">
+                                    <Border Width="{Binding ActualWidth, ElementName=PeriodTopicInputHost}"
+                                            MaxHeight="264"
+                                            Background="White"
+                                            BorderBrush="{StaticResource BorderBrushStrong}"
+                                            BorderThickness="1"
+                                            SnapsToDevicePixels="True">
+                                        <ListBox x:Name="PeriodTopicSuggestionList"
+                                                 ItemsSource="{Binding PeriodCheckTopicSuggestions}"
+                                                 Background="White"
+                                                 BorderThickness="0"
+                                                 Padding="0,3"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                 PreviewMouseLeftButtonUp="PeriodTopicSuggestionList_PreviewMouseLeftButtonUp">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                            <ListBox.ItemContainerStyle>
+                                                <Style TargetType="ListBoxItem">
+                                                    <Setter Property="Padding" Value="9,6" />
+                                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                    <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+                                                    <Setter Property="Background" Value="White" />
+                                                    <Setter Property="Cursor" Value="Hand" />
+                                                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter Property="Background" Value="#CFE6E1" />
+                                                            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ListBox.ItemContainerStyle>
+                                        </ListBox>
+                                    </Border>
+                                </Popup>
+                            </Grid>
                             <Button Grid.Row="1"
                                     Grid.Column="2"
                                     Content="측정 시작"

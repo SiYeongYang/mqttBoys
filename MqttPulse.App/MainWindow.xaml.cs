@@ -10,6 +10,7 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
     private Point _profileTreeDragStart;
+    private bool _isCommittingPeriodTopicSuggestion;
 
     public MainWindow()
     {
@@ -39,15 +40,140 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PeriodTopicCombo_PreviewKeyUp(object sender, KeyEventArgs e)
+    private void PeriodTopicInput_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (sender is not ComboBox combo
-            || e.Key is Key.Up or Key.Down or Key.Enter or Key.Escape or Key.Tab)
+        if (_isCommittingPeriodTopicSuggestion)
         {
             return;
         }
 
-        combo.IsDropDownOpen = _viewModel.PeriodCheckTopicSuggestions.Count > 0;
+        Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.DataBind,
+            new Action(() => ShowPeriodTopicSuggestions(resetSelection: true)));
+    }
+
+    private void PeriodTopicInput_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        ShowPeriodTopicSuggestions(resetSelection: true);
+    }
+
+    private void PeriodTopicDropButton_Click(object sender, RoutedEventArgs e)
+    {
+        PeriodTopicInput.Focus();
+        PeriodTopicInput.CaretIndex = PeriodTopicInput.Text.Length;
+        PeriodTopicInput.SelectionLength = 0;
+        ShowPeriodTopicSuggestions(resetSelection: true);
+    }
+
+    private void PeriodTopicInput_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Down:
+                MovePeriodTopicSuggestion(1);
+                e.Handled = true;
+                break;
+            case Key.Up:
+                MovePeriodTopicSuggestion(-1);
+                e.Handled = true;
+                break;
+            case Key.Enter when PeriodTopicPopup.IsOpen
+                                && PeriodTopicSuggestionList.SelectedItem is string topic:
+                CommitPeriodTopicSuggestion(topic);
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                ClosePeriodTopicSuggestions();
+                e.Handled = true;
+                break;
+            case Key.Tab:
+                ClosePeriodTopicSuggestions();
+                break;
+        }
+    }
+
+    private void PeriodTopicSuggestionList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBox list
+            || ItemsControl.ContainerFromElement(list, e.OriginalSource as DependencyObject) is not ListBoxItem item
+            || item.DataContext is not string topic)
+        {
+            return;
+        }
+
+        CommitPeriodTopicSuggestion(topic);
+        e.Handled = true;
+    }
+
+    private void PeriodCheckPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is false)
+        {
+            ClosePeriodTopicSuggestions();
+        }
+    }
+
+    private void MovePeriodTopicSuggestion(int offset)
+    {
+        var count = PeriodTopicSuggestionList.Items.Count;
+        if (count == 0)
+        {
+            ClosePeriodTopicSuggestions();
+            return;
+        }
+
+        PeriodTopicPopup.IsOpen = true;
+        var current = PeriodTopicSuggestionList.SelectedIndex;
+        var next = current < 0
+            ? (offset > 0 ? 0 : count - 1)
+            : Math.Clamp(current + offset, 0, count - 1);
+        PeriodTopicSuggestionList.SelectedIndex = next;
+        PeriodTopicSuggestionList.ScrollIntoView(PeriodTopicSuggestionList.SelectedItem);
+    }
+
+    private void ShowPeriodTopicSuggestions(bool resetSelection)
+    {
+        if (!PeriodTopicInput.IsKeyboardFocusWithin || !PeriodTopicInput.IsEnabled)
+        {
+            return;
+        }
+
+        if (resetSelection)
+        {
+            PeriodTopicSuggestionList.SelectedIndex = -1;
+        }
+
+        PeriodTopicPopup.IsOpen = _viewModel.PeriodCheckTopicSuggestions.Count > 0;
+    }
+
+    private void CommitPeriodTopicSuggestion(string topic)
+    {
+        _isCommittingPeriodTopicSuggestion = true;
+        try
+        {
+            PeriodTopicPopup.IsOpen = false;
+            PeriodTopicSuggestionList.SelectedIndex = -1;
+            _viewModel.PeriodCheckTopicText = topic;
+        }
+        finally
+        {
+            _isCommittingPeriodTopicSuggestion = false;
+        }
+
+        Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Input,
+            new Action(() =>
+            {
+                PeriodTopicInput.Focus();
+                PeriodTopicInput.CaretIndex = PeriodTopicInput.Text.Length;
+                PeriodTopicInput.SelectionLength = 0;
+            }));
+    }
+
+    private void ClosePeriodTopicSuggestions()
+    {
+        PeriodTopicPopup.IsOpen = false;
+        PeriodTopicSuggestionList.SelectedIndex = -1;
     }
 
     private void ProfileTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
