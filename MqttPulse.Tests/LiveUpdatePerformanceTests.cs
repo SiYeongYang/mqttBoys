@@ -41,9 +41,70 @@ public sealed class LiveUpdatePerformanceTests
             "A single UI drain must yield instead of monopolizing the dispatcher.");
     }
 
+    [TestMethod]
+    public void TopicTreeVisualNotificationsAreCoalescedWithoutLosingCounts()
+    {
+        using var viewModel = new MainViewModel();
+        var receive = GetPrivateMethod("OnMessageReceived");
+        var drain = GetPrivateMethod("DrainPendingMessages");
+        var receivedAt = DateTimeOffset.Parse("2026-07-23T19:30:00+09:00");
+
+        receive.Invoke(
+            viewModel,
+            new object[]
+            {
+                new MqttMessageSnapshot(
+                    "VTS/EDGE_DATA/device",
+                    "{\"value\":1}",
+                    receivedAt,
+                    Qos: 0,
+                    Retain: false,
+                    ReceivedStopwatchTimestamp: 1)
+            });
+        drain.Invoke(viewModel, null);
+
+        var brokerRoot = viewModel.RootTopics.Single();
+        var detailNotifications = 0;
+        brokerRoot.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(TopicViewModel.DetailText))
+            {
+                detailNotifications++;
+            }
+        };
+
+        receive.Invoke(
+            viewModel,
+            new object[]
+            {
+                new MqttMessageSnapshot(
+                    "VTS/EDGE_DATA/device",
+                    "{\"value\":2}",
+                    receivedAt.AddMilliseconds(1),
+                    Qos: 0,
+                    Retain: false,
+                    ReceivedStopwatchTimestamp: 2)
+            });
+        drain.Invoke(viewModel, null);
+
+        Assert.AreEqual(2, brokerRoot.MessageCount);
+        Assert.AreEqual(0, detailNotifications);
+
+        GetPrivateField("_lastTopicVisualRefreshTimestamp").SetValue(viewModel, 0L);
+        drain.Invoke(viewModel, null);
+
+        Assert.AreEqual(1, detailNotifications);
+    }
+
     private static MethodInfo GetPrivateMethod(string name)
     {
         return typeof(MainViewModel).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)
                ?? throw new MissingMethodException(nameof(MainViewModel), name);
+    }
+
+    private static FieldInfo GetPrivateField(string name)
+    {
+        return typeof(MainViewModel).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
+               ?? throw new MissingFieldException(nameof(MainViewModel), name);
     }
 }

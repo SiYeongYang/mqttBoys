@@ -81,6 +81,30 @@ public sealed class HistoryViewModelTests
         Assert.AreEqual("Resume", viewModel.HistoryPauseButtonText);
     }
 
+    [TestMethod]
+    public void SelectingAnotherTopicResetsPauseToLiveUpdates()
+    {
+        using var viewModel = new MainViewModel();
+        var first = new TopicViewModel("first", "Edge/data/first", historyCapacity: 10);
+        var second = new TopicViewModel("second", "Edge/data/second", historyCapacity: 10);
+        first.Record(
+            Message("Edge/data/first", "{\"value\":1}", "2026-06-18T20:09:41.000+09:00"),
+            isLeaf: true,
+            leafTopicWasNew: true);
+        second.Record(
+            Message("Edge/data/second", "{\"value\":2}", "2026-06-18T20:09:42.000+09:00"),
+            isLeaf: true,
+            leafTopicWasNew: true);
+
+        viewModel.SelectedTopic = first;
+        viewModel.ToggleHistoryPauseCommand.Execute(null);
+        viewModel.SelectedTopic = second;
+
+        Assert.IsFalse(viewModel.HistoryPaused);
+        Assert.AreEqual("Pause", viewModel.HistoryPauseButtonText);
+        StringAssert.Contains(viewModel.ValuePayloadText, "\"value\": 2");
+    }
+
     private static MqttMessageSnapshot Message(string topic, string payload, string receivedAt) =>
         new(topic, payload, DateTimeOffset.Parse(receivedAt), Qos: 0, Retain: false);
 }

@@ -97,6 +97,78 @@ public sealed class CoreModelTests
     }
 
     [TestMethod]
+    public void JsonTextFormatterFormatsCompactsAndKeepsKoreanReadable()
+    {
+        const string input = "{\"상태\":\"정상\",\"value\":42,\"enabled\":true}";
+
+        Assert.IsTrue(JsonTextFormatter.TryFormat(
+            input,
+            indented: true,
+            out var formatted,
+            out var formatError));
+        Assert.AreEqual(string.Empty, formatError);
+        StringAssert.Contains(formatted, Environment.NewLine);
+        StringAssert.Contains(formatted, "\"상태\": \"정상\"");
+
+        Assert.IsTrue(JsonTextFormatter.TryFormat(
+            input,
+            indented: false,
+            out var compact,
+            out var compactError));
+        Assert.AreEqual(string.Empty, compactError);
+        Assert.IsFalse(compact.Contains(Environment.NewLine, StringComparison.Ordinal));
+        StringAssert.Contains(compact, "\"상태\":\"정상\"");
+    }
+
+    [TestMethod]
+    public void JsonTextFormatterReportsInvalidInputPosition()
+    {
+        Assert.IsFalse(JsonTextFormatter.TryFormat(
+            "{\n  \"value\": 1,\n}",
+            indented: true,
+            out var formatted,
+            out var error));
+
+        Assert.AreEqual(string.Empty, formatted);
+        StringAssert.Contains(error, "유효하지 않은 JSON");
+        StringAssert.Contains(error, "행");
+    }
+
+    [TestMethod]
+    public void JsonScalarExtractorFindsAndReadsNumberBooleanAndNumericString()
+    {
+        const string payload =
+            "{\"data\":[{\"value\":42,\"running\":true,\"speed\":\"12.5\"}],\"name\":\"line-a\"}";
+
+        var metrics = JsonScalarExtractor.Discover(payload);
+        var valueMetric = metrics.Single(metric => metric.DisplayPath == "$.data[0].value");
+        var runningMetric = metrics.Single(metric => metric.DisplayPath == "$.data[0].running");
+        var speedMetric = metrics.Single(metric => metric.DisplayPath == "$.data[0].speed");
+
+        Assert.AreEqual(JsonScalarKind.Number, valueMetric.Kind);
+        Assert.AreEqual(JsonScalarKind.Boolean, runningMetric.Kind);
+        Assert.AreEqual(JsonScalarKind.Number, speedMetric.Kind);
+        Assert.IsTrue(JsonScalarExtractor.TryRead(payload, valueMetric, out var value));
+        Assert.AreEqual(42, value, 0.001);
+        Assert.IsTrue(JsonScalarExtractor.TryRead(payload, runningMetric, out var running));
+        Assert.AreEqual(1, running, 0.001);
+        Assert.IsTrue(JsonScalarExtractor.TryRead(payload, speedMetric, out var speed));
+        Assert.AreEqual(12.5, speed, 0.001);
+    }
+
+    [TestMethod]
+    public void JsonScalarExtractorHandlesEscapedJsonPointerProperties()
+    {
+        const string payload = "{\"line/a\":{\"~value\":7}}";
+
+        var metric = JsonScalarExtractor.Discover(payload).Single();
+
+        Assert.AreEqual("/line~1a/~0value", metric.Pointer);
+        Assert.IsTrue(JsonScalarExtractor.TryRead(payload, metric, out var value));
+        Assert.AreEqual(7, value, 0.001);
+    }
+
+    [TestMethod]
     public void BoundedMessageHistoryNewestFirstCanLimitRowsWithoutAllocatingAllHistory()
     {
         var history = new BoundedMessageHistory(5);

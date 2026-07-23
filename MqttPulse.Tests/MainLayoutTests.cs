@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -6,6 +7,7 @@ using System.Windows.Threading;
 using MqttPulse.App;
 using MqttPulse.App.Models;
 using MqttPulse.App.ViewModels;
+using MqttPulse.Core;
 
 namespace MqttPulse.Tests;
 
@@ -125,14 +127,20 @@ public sealed class MainLayoutTests
             var search = (TextBox)window.FindName("HeaderSearchInput");
             var valuePanel = (Grid)window.FindName("ValuePanel");
             var pause = (Button)window.FindName("ValuePauseButton");
+            var chart = (Button)window.FindName("ValueChartButton");
+            var chartFlyout = (Border)window.FindName("ValueChartFlyout");
+            var formatter = (Grid)window.FindName("JsonFormatterPanel");
             var detail = (Grid)window.FindName("MainDetailGrid");
             var publishPayload = (TextBox)window.FindName("PublishPayloadInput");
 
-            Assert.AreEqual(3, Grid.GetColumn(caption));
-            Assert.AreEqual(4, Grid.GetColumn(connection));
-            Assert.AreEqual(5, Grid.GetColumn(search));
+            Assert.AreEqual(3, Grid.GetColumn(search));
+            Assert.AreEqual(5, Grid.GetColumn(caption));
+            Assert.AreEqual(6, Grid.GetColumn(connection));
+            Assert.IsTrue(chart.IsDescendantOf(valuePanel));
             Assert.IsTrue(pause.IsDescendantOf(valuePanel));
             Assert.IsFalse(pause.IsDescendantOf(header));
+            Assert.AreEqual(Visibility.Collapsed, chartFlyout.Visibility);
+            Assert.AreEqual(Visibility.Collapsed, formatter.Visibility);
             Assert.AreEqual(170, detail.RowDefinitions[2].ActualHeight, 0.5);
             Assert.IsGreaterThan(100, publishPayload.ActualHeight);
         });
@@ -162,6 +170,72 @@ public sealed class MainLayoutTests
             Assert.AreEqual(Visibility.Collapsed, folderBrokerIcon.Visibility);
             Assert.AreEqual(Visibility.Collapsed, brokerFolderIcon.Visibility);
             Assert.AreEqual(Visibility.Visible, brokerIcon.Visibility);
+        });
+    }
+
+    [TestMethod]
+    public void ValueChartOpensOnDemandAndBuildsNumericHistory()
+    {
+        RunInWindow(window =>
+        {
+            window.Width = 1100;
+            window.Height = 720;
+            window.UpdateLayout();
+            var viewModel = (MainViewModel)window.DataContext;
+            var chartFlyout = (Border)window.FindName("ValueChartFlyout");
+            var topic = new TopicViewModel("device", "Edge/data/device", historyCapacity: 10);
+            for (var index = 0; index < 3; index++)
+            {
+                topic.Record(
+                    new MqttMessageSnapshot(
+                        topic.FullTopic,
+                        $"{{\"value\":{index},\"running\":{(index % 2 == 0 ? "true" : "false")}}}",
+                        DateTimeOffset.Parse("2026-07-23T19:30:00+09:00").AddMilliseconds(index),
+                        Qos: 0,
+                        Retain: false),
+                    isLeaf: true,
+                    leafTopicWasNew: index == 0);
+            }
+
+            viewModel.SelectedTopic = topic;
+            viewModel.OpenValueChartCommand.Execute(null);
+
+            var timeout = Stopwatch.StartNew();
+            while (viewModel.ValueChartMetrics.Count == 0
+                   && timeout.Elapsed < TimeSpan.FromSeconds(3))
+            {
+                Thread.Sleep(10);
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.DataBind);
+            }
+
+            Assert.AreEqual(Visibility.Visible, viewModel.ValueChartVisibility);
+            Assert.IsGreaterThanOrEqualTo(2, viewModel.ValueChartMetrics.Count);
+            Assert.HasCount(3, viewModel.ValueChartValues);
+            Assert.IsLessThanOrEqualTo(window.ActualWidth, chartFlyout.ActualWidth);
+            Assert.IsLessThanOrEqualTo(window.ActualHeight, chartFlyout.ActualHeight);
+
+            viewModel.CloseValueChartCommand.Execute(null);
+
+            Assert.AreEqual(Visibility.Collapsed, viewModel.ValueChartVisibility);
+        });
+    }
+
+    [TestMethod]
+    public void JsonFormatterFitsTheMinimumWindow()
+    {
+        RunInWindow(window =>
+        {
+            window.Width = 1100;
+            window.Height = 720;
+            var viewModel = (MainViewModel)window.DataContext;
+            viewModel.OpenJsonFormatterCommand.Execute(null);
+            window.UpdateLayout();
+
+            var dialog = (Grid)window.FindName("JsonFormatterDialog");
+
+            Assert.AreEqual(Visibility.Visible, viewModel.JsonFormatterVisibility);
+            Assert.IsLessThanOrEqualTo(window.ActualWidth, dialog.ActualWidth);
+            Assert.IsLessThanOrEqualTo(window.ActualHeight, dialog.ActualHeight);
         });
     }
 
