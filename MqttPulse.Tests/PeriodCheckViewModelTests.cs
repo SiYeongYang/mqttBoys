@@ -8,6 +8,32 @@ namespace MqttPulse.Tests;
 public sealed class PeriodCheckViewModelTests
 {
     [TestMethod]
+    [DataRow("10초", "10초 측정")]
+    [DataRow("30", "30초 측정")]
+    [DataRow("1분", "1분 측정")]
+    [DataRow("2m", "2분 측정")]
+    public void PeriodCheckDurationAcceptsPresetsAndDirectInput(string input, string expected)
+    {
+        using var viewModel = new MainViewModel();
+
+        viewModel.PeriodCheckDurationText = input;
+
+        Assert.AreEqual(expected, viewModel.PeriodCheckDurationSummaryText);
+    }
+
+    [TestMethod]
+    public void PeriodCheckDurationRejectsValuesOutsideTheSupportedRange()
+    {
+        using var viewModel = new MainViewModel();
+
+        viewModel.PeriodCheckDurationText = "0초";
+        Assert.AreEqual("1초~60분 입력", viewModel.PeriodCheckDurationSummaryText);
+
+        viewModel.PeriodCheckDurationText = "61분";
+        Assert.AreEqual("1초~60분 입력", viewModel.PeriodCheckDurationSummaryText);
+    }
+
+    [TestMethod]
     public void SelectingPeriodCheckHistoryShowsItsDetailedResult()
     {
         using var viewModel = new MainViewModel();

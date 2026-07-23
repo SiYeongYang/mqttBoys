@@ -17,7 +17,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private const int HistoryDisplayLimit = 1_000;
     private static readonly long DetailRefreshMinTicks = Stopwatch.Frequency / 4;
     private const int SearchResultLimit = 500;
-    private const int PeriodCheckSeconds = 10;
+    private const int MinPeriodCheckSeconds = 1;
+    private const int MaxPeriodCheckSeconds = 3_600;
     private const int PeriodCheckHistoryLimit = 100;
     private readonly ConcurrentQueue<MqttMessageSnapshot> _pendingMessages = new();
     private readonly ConcurrentQueue<long> _periodCheckSamples = new();
@@ -27,9 +28,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly ProfileStore _profileStore;
     private readonly MqttClientService _mqttClient = new();
     private readonly DispatcherTimer _flushTimer;
+    private CancellationTokenSource? _periodCheckCancellation;
     private ProfileTreeNodeViewModel? _selectedProfileNode;
     private TopicViewModel? _brokerTopicRoot;
     private BrokerProfile? _selectedProfile;
+    private BrokerProfile? _connectedProfile;
     private TopicViewModel? _selectedTopic;
     private HistoryItemViewModel? _selectedHistoryItem;
     private PeriodCheckHistoryItemViewModel? _selectedPeriodCheckHistoryItem;
@@ -55,6 +58,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _followLatest = true;
     private string _statusMessage = "Ready";
     private string _periodCheckTopicText = string.Empty;
+    private string _periodCheckDurationText = "10초";
     private string _periodCheckStatus = "토픽을 입력하거나 기존 토픽에서 선택하세요.";
     private string _periodCheckResultText = "아직 측정 결과가 없습니다.";
     private string _periodCheckTargetTopic = string.Empty;
@@ -79,6 +83,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         ConnectCommand = new AsyncRelayCommand(ConnectAsync, () => !IsBusy && !IsConnected && SelectedProfile is not null);
+        ConnectSelectedProfileCommand = new AsyncRelayCommand(ConnectAsync, () => !IsBusy && SelectedProfile is not null);
         DisconnectCommand = new AsyncRelayCommand(DisconnectAsync, () => !IsBusy && IsConnected);
         PublishCommand = new AsyncRelayCommand(PublishAsync, () => IsConnected && !string.IsNullOrWhiteSpace(PublishTopic));
         FormatPublishJsonCommand = new RelayCommand(FormatPublishJson);
@@ -89,7 +94,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CloseConnectionManagerCommand = new RelayCommand(CloseConnectionManager);
         OpenPeriodCheckCommand = new RelayCommand(OpenPeriodCheck, () => IsConnected && !IsPeriodCheckRunning);
         ClosePeriodCheckCommand = new RelayCommand(ClosePeriodCheck, () => !IsPeriodCheckRunning);
-        StartPeriodCheckCommand = new RelayCommand(StartPeriodCheck, () => IsConnected && !IsPeriodCheckRunning && !string.IsNullOrWhiteSpace(PeriodCheckTopicText));
+        StartPeriodCheckCommand = new RelayCommand(
+            StartPeriodCheck,
+            () => IsConnected
+                  && !IsPeriodCheckRunning
+                  && !string.IsNullOrWhiteSpace(PeriodCheckTopicText)
+                  && TryGetPeriodCheckDuration(out _));
+        StopPeriodCheckCommand = new RelayCommand(StopPeriodCheck, () => IsPeriodCheckRunning);
         AddProfileCommand = new RelayCommand(AddProfile);
         AddFolderCommand = new RelayCommand(AddFolder);
         RenameFolderCommand = new RelayCommand(RenameFolder, () => CanRenameSelectedFolder && !string.IsNullOrWhiteSpace(SelectedFolderName));
@@ -133,7 +144,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public IReadOnlyList<string> TransportOptions { get; } = new[] { "mqtt", "ws", "wss" };
 
+    public IReadOnlyList<string> PeriodCheckDurationOptions { get; } = new[] { "10초", "30초", "1분" };
+
     public AsyncRelayCommand ConnectCommand { get; }
+
+    public AsyncRelayCommand ConnectSelectedProfileCommand { get; }
 
     public AsyncRelayCommand DisconnectCommand { get; }
 
@@ -156,6 +171,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand ClosePeriodCheckCommand { get; }
 
     public RelayCommand StartPeriodCheckCommand { get; }
+
+    public RelayCommand StopPeriodCheckCommand { get; }
 
     public RelayCommand AddProfileCommand { get; }
 
@@ -236,9 +253,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string SelectedProfileCaption => SelectedProfile is null
+    public string SelectedProfileCaption => (_connectedProfile ?? SelectedProfile) is not { } profile
         ? "No broker selected"
-        : $"{SelectedProfile.Name} ({SelectedProfile.Transport}://{SelectedProfile.Host}:{SelectedProfile.Port})";
+        : $"{profile.Name} ({profile.Transport}://{profile.Host}:{profile.Port})";
 
     public TopicViewModel? SelectedTopic
     {
@@ -457,6 +474,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _isConnected, value))
             {
+                OnPropertyChanged(nameof(SelectedProfileCaption));
                 RaiseCommandStates();
             }
         }
@@ -537,6 +555,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    public string PeriodCheckDurationText
+    {
+        get => _periodCheckDurationText;
+        set
+        {
+            if (SetProperty(ref _periodCheckDurationText, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(PeriodCheckDurationSummaryText));
+                StartPeriodCheckCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string PeriodCheckDurationSummaryText => TryGetPeriodCheckDuration(out var seconds)
+        ? $"{FormatDurationSeconds(seconds)} 측정"
+        : "1초~60분 입력";
+
     public PeriodCheckHistoryItemViewModel? SelectedPeriodCheckHistoryItem
     {
         get => _selectedPeriodCheckHistoryItem;
@@ -575,7 +610,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string HistoryPauseButtonText => HistoryPaused ? "Resume" : "Pause";
+    public string HistoryPauseButtonText => HistoryPaused ? "계속" : "일시정지";
 
     public bool FreezeDetail
     {
@@ -611,6 +646,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _periodCheckCancellation?.Cancel();
         _flushTimer.Stop();
         _mqttClient.Dispose();
     }
@@ -731,14 +767,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             ClearTopics();
             StatusMessage = $"Connecting to {profileToConnect.Host}:{profileToConnect.Port}...";
             await _mqttClient.ConnectAsync(profileToConnect, CancellationToken.None);
+            _connectedProfile = profileToConnect.Clone();
             IsConnected = true;
+            OnPropertyChanged(nameof(SelectedProfileCaption));
             EnsureBrokerRoot();
             IsConnectionManagerOpen = false;
         }
         catch (Exception ex)
         {
             StatusMessage = $"Connect failed: {ex.Message}";
+            _connectedProfile = null;
             IsConnected = false;
+            OnPropertyChanged(nameof(SelectedProfileCaption));
         }
         finally
         {
@@ -759,7 +799,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         finally
         {
+            _connectedProfile = null;
             IsConnected = false;
+            OnPropertyChanged(nameof(SelectedProfileCaption));
             IsBusy = false;
         }
     }
@@ -821,17 +863,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task OpenConnectionManagerAsync()
+    private Task OpenConnectionManagerAsync()
     {
-        if (IsConnected)
-        {
-            await DisconnectAsync();
-            ClearPendingMessages();
-        }
-
         RebuildProfileTree();
-        RestoreProfileTreeSelection(SelectedProfile?.Id, null);
+        RestoreProfileTreeSelection(_connectedProfile?.Id ?? SelectedProfile?.Id, null);
         IsConnectionManagerOpen = true;
+        return Task.CompletedTask;
     }
 
     private void CloseConnectionManager()
@@ -867,13 +904,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void StartPeriodCheck()
     {
         var topic = PeriodCheckTopicText.Trim();
-        if (topic.Length == 0)
+        if (topic.Length == 0 || !TryGetPeriodCheckDuration(out var durationSeconds))
         {
             return;
         }
 
         PeriodCheckTopicText = topic;
-        _ = StartPeriodCheckAsync(topic);
+        _ = StartPeriodCheckAsync(topic, durationSeconds);
+    }
+
+    private void StopPeriodCheck()
+    {
+        if (!IsPeriodCheckRunning)
+        {
+            return;
+        }
+
+        PeriodCheckStatus = "측정 중단 요청 중...";
+        _periodCheckCancellation?.Cancel();
     }
 
     private void AddProfile()
@@ -1321,9 +1369,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PendingCount = Math.Max(0, Volatile.Read(ref _pendingQueueCount));
         OnPropertyChanged(nameof(TopicCount));
 
-        if (!FreezeDetail && !HistoryPaused && selectedTopicWasTouched && ShouldRefreshSelectedTopicDetail())
+        if (!FreezeDetail && selectedTopicWasTouched && ShouldRefreshSelectedTopicDetail())
         {
-            RefreshSelectedTopic(keepCurrentSelection: true);
+            if (HistoryPaused)
+            {
+                RefreshSelectedTopicValue();
+            }
+            else
+            {
+                RefreshSelectedTopic(keepCurrentSelection: true);
+            }
         }
 
         if (searchNeedsRefresh && !string.IsNullOrWhiteSpace(SearchText))
@@ -1346,6 +1401,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private TopicViewModel IngestIntoTree(MqttMessageSnapshot message, out bool leafTopicWasNew)
     {
+        var activeProfile = _connectedProfile ?? SelectedProfile;
         var segments = message.Topic.Split('/', StringSplitOptions.None);
         var current = EnsureBrokerRoot();
         var path = string.Empty;
@@ -1359,7 +1415,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             path = path.Length == 0 ? segment : $"{path}/{segment}";
             var isLeaf = i == segments.Length - 1;
 
-            current = current.GetOrCreateChild(segment, path, SelectedProfile?.MaxHistoryPerTopic ?? 300);
+            current = current.GetOrCreateChild(segment, path, activeProfile?.MaxHistoryPerTopic ?? 300);
             current.Record(message, isLeaf, leafTopicWasNew);
 
             if (isLeaf)
@@ -1378,15 +1434,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return _brokerTopicRoot;
         }
 
-        var rootName = SelectedProfile is null
+        var activeProfile = _connectedProfile ?? SelectedProfile;
+        var rootName = activeProfile is null
             ? "broker"
-            : SelectedProfile.Host.Trim();
+            : activeProfile.Host.Trim();
         if (string.IsNullOrWhiteSpace(rootName))
         {
-            rootName = SelectedProfile?.Name ?? "broker";
+            rootName = activeProfile?.Name ?? "broker";
         }
 
-        _brokerTopicRoot = new TopicViewModel(rootName, string.Empty, SelectedProfile?.MaxHistoryPerTopic ?? 300);
+        _brokerTopicRoot = new TopicViewModel(rootName, string.Empty, activeProfile?.MaxHistoryPerTopic ?? 300);
         RootTopics.Add(_brokerTopicRoot);
         return _brokerTopicRoot;
     }
@@ -1408,15 +1465,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task StartPeriodCheckAsync(string topic)
+    private async Task StartPeriodCheckAsync(string topic, int durationSeconds)
     {
-        if (SelectedProfile is null || !IsConnected)
+        var profile = (_connectedProfile ?? SelectedProfile)?.Clone();
+        if (profile is null || !IsConnected)
         {
             PeriodCheckResultText = "브로커에 연결된 상태에서만 주기 체크를 실행할 수 있습니다.";
             return;
         }
 
-        var profile = SelectedProfile;
+        var cancellation = new CancellationTokenSource();
+        _periodCheckCancellation = cancellation;
         _periodCheckTargetTopic = topic;
         IsPeriodCheckRunning = true;
         PeriodCheckResultText = string.Empty;
@@ -1425,31 +1484,55 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ClearPeriodCheckSamples();
         _flushTimer.Stop();
         var historySummary = "측정 실패";
+        var finalStatus = "측정 실패";
+        var measurementStartedAt = 0L;
+        var hasMeasurementResult = false;
+        var wasStopped = false;
 
         try
         {
-            await _mqttClient.ReplaceSubscriptionAsync(topic, profile.SubscribeQos, CancellationToken.None);
+            await _mqttClient.ReplaceSubscriptionAsync(topic, profile.SubscribeQos, cancellation.Token);
             ClearPeriodCheckSamples();
+            measurementStartedAt = Stopwatch.GetTimestamp();
 
-            for (var remaining = PeriodCheckSeconds; remaining > 0; remaining--)
+            for (var remaining = durationSeconds; remaining > 0; remaining--)
             {
                 PeriodCheckStatus = $"측정 중: {topic} ({remaining}초 남음)";
-                await Task.Delay(TimeSpan.FromSeconds(1));
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellation.Token);
             }
 
-            var samples = _periodCheckSamples.ToArray();
-            var statistics = MessagePeriodStatistics.CalculateStopwatchTicks(samples, Stopwatch.Frequency);
-            PeriodCheckResultText = BuildPeriodCheckResult(topic, statistics);
-            historySummary = BuildPeriodCheckSummary(statistics);
-            PeriodCheckStatus = "측정 완료. 원래 구독으로 복원 중...";
+            hasMeasurementResult = true;
+            finalStatus = "측정 완료";
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            hasMeasurementResult = true;
+            wasStopped = true;
+            finalStatus = "측정 중단";
         }
         catch (Exception ex)
         {
             PeriodCheckResultText = $"측정 실패: {ex.Message}";
-            PeriodCheckStatus = "측정 실패";
         }
         finally
         {
+            if (hasMeasurementResult)
+            {
+                var elapsedMilliseconds = measurementStartedAt == 0
+                    ? 0
+                    : Stopwatch.GetElapsedTime(measurementStartedAt).TotalMilliseconds;
+                var samples = _periodCheckSamples.ToArray();
+                var statistics = MessagePeriodStatistics.CalculateStopwatchTicks(samples, Stopwatch.Frequency);
+                PeriodCheckResultText = BuildPeriodCheckResult(
+                    topic,
+                    statistics,
+                    durationSeconds,
+                    elapsedMilliseconds,
+                    wasStopped);
+                historySummary = BuildPeriodCheckSummary(statistics, wasStopped);
+            }
+
+            PeriodCheckStatus = $"{finalStatus}. 원래 구독으로 복원 중...";
             try
             {
                 if (_mqttClient.IsConnected)
@@ -1462,13 +1545,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 PeriodCheckResultText = AppendResultLine(PeriodCheckResultText, $"원래 구독 복원 실패: {ex.Message}");
             }
 
+            if (ReferenceEquals(_periodCheckCancellation, cancellation))
+            {
+                _periodCheckCancellation = null;
+            }
+
+            cancellation.Dispose();
             _periodCheckTargetTopic = string.Empty;
             IsPeriodCheckRunning = false;
             _flushTimer.Start();
             PendingCount = Math.Max(0, Volatile.Read(ref _pendingQueueCount));
-            PeriodCheckStatus = PeriodCheckResultText.StartsWith("측정 실패:", StringComparison.Ordinal)
-                ? "측정 실패"
-                : "측정 완료";
+            PeriodCheckStatus = finalStatus;
             AddPeriodCheckHistory(topic, historySummary, PeriodCheckResultText);
             RefreshPeriodCheckTopicSuggestions();
         }
@@ -1557,6 +1644,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ValuePayloadText = FormatPayloadForDetail(message);
     }
 
+    private void RefreshSelectedTopicValue()
+    {
+        if (SelectedTopic?.LastMessage is { } message)
+        {
+            ShowValuePayload(message);
+        }
+    }
+
     private void ClearPendingMessages()
     {
         var removed = 0;
@@ -1605,36 +1700,96 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return $"{milliseconds.ToString(format, CultureInfo.InvariantCulture)} ms";
     }
 
-    private static string BuildPeriodCheckSummary(MessagePeriodStatisticsResult statistics)
+    private bool TryGetPeriodCheckDuration(out int seconds)
     {
+        var text = PeriodCheckDurationText.Trim();
+        var multiplier = 1;
+
+        if (text.EndsWith("분", StringComparison.Ordinal))
+        {
+            text = text[..^1].Trim();
+            multiplier = 60;
+        }
+        else if (text.EndsWith("초", StringComparison.Ordinal))
+        {
+            text = text[..^1].Trim();
+        }
+        else if (text.EndsWith("m", StringComparison.OrdinalIgnoreCase))
+        {
+            text = text[..^1].Trim();
+            multiplier = 60;
+        }
+
+        if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            || value <= 0
+            || value > MaxPeriodCheckSeconds / multiplier)
+        {
+            seconds = 0;
+            return false;
+        }
+
+        seconds = value * multiplier;
+        return seconds is >= MinPeriodCheckSeconds and <= MaxPeriodCheckSeconds;
+    }
+
+    private static string FormatDurationSeconds(int seconds)
+    {
+        return seconds >= 60 && seconds % 60 == 0
+            ? $"{seconds / 60}분"
+            : $"{seconds}초";
+    }
+
+    private static string FormatElapsedTime(double milliseconds)
+    {
+        if (milliseconds < 1_000)
+        {
+            return FormatMilliseconds(milliseconds);
+        }
+
+        return $"{(milliseconds / 1_000).ToString("0.##", CultureInfo.InvariantCulture)}초";
+    }
+
+    private static string BuildPeriodCheckSummary(MessagePeriodStatisticsResult statistics, bool wasStopped)
+    {
+        var state = wasStopped ? "중단" : "완료";
         if (!statistics.HasIntervals)
         {
-            return $"Samples {statistics.SampleCount:N0}, 주기 계산 불가";
+            return $"{state} · 표본 {statistics.SampleCount:N0}개 · 주기 계산 불가";
         }
 
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"Avg {FormatMilliseconds(statistics.AverageMilliseconds)} · Min {FormatMilliseconds(statistics.MinimumMilliseconds)} · Max {FormatMilliseconds(statistics.MaximumMilliseconds)} · Samples {statistics.SampleCount:N0}");
+            $"{state} · 평균 {FormatMilliseconds(statistics.AverageMilliseconds)} · 최소 {FormatMilliseconds(statistics.MinimumMilliseconds)} · 최대 {FormatMilliseconds(statistics.MaximumMilliseconds)} · 표본 {statistics.SampleCount:N0}개");
     }
-    private static string BuildPeriodCheckResult(string topic, MessagePeriodStatisticsResult statistics)
+
+    private static string BuildPeriodCheckResult(
+        string topic,
+        MessagePeriodStatisticsResult statistics,
+        int requestedSeconds,
+        double elapsedMilliseconds,
+        bool wasStopped)
     {
+        var lines = new List<string>
+        {
+            $"상태: {(wasStopped ? "사용자 중단" : "측정 완료")}",
+            $"토픽: {topic}",
+            $"설정 시간: {FormatDurationSeconds(requestedSeconds)}",
+            $"실제 측정 시간: {FormatElapsedTime(elapsedMilliseconds)}",
+            $"수신 표본: {statistics.SampleCount:N0}개",
+            $"주기 구간: {statistics.IntervalCount:N0}개"
+        };
+
         if (!statistics.HasIntervals)
         {
-            return string.Join(Environment.NewLine,
-                $"Topic: {topic}",
-                $"Samples: {statistics.SampleCount:N0}",
-                "Intervals: 0",
-                "Result: 메시지가 2개 이상 수신되지 않아 주기를 계산할 수 없습니다.");
+            lines.Add("결과: 메시지가 2개 이상 수신되지 않아 주기를 계산할 수 없습니다.");
+            return string.Join(Environment.NewLine, lines);
         }
 
-        return string.Join(Environment.NewLine,
-            $"Topic: {topic}",
-            $"Samples: {statistics.SampleCount:N0}",
-            $"Intervals: {statistics.IntervalCount:N0}",
-            $"Average: {FormatMilliseconds(statistics.AverageMilliseconds)}",
-            $"Min: {FormatMilliseconds(statistics.MinimumMilliseconds)}",
-            $"Max: {FormatMilliseconds(statistics.MaximumMilliseconds)}",
-            $"Captured: {FormatMilliseconds(statistics.DurationMilliseconds)}");
+        lines.Add($"평균 주기: {FormatMilliseconds(statistics.AverageMilliseconds)}");
+        lines.Add($"최소 주기: {FormatMilliseconds(statistics.MinimumMilliseconds)}");
+        lines.Add($"최대 주기: {FormatMilliseconds(statistics.MaximumMilliseconds)}");
+        lines.Add($"메시지 구간: {FormatElapsedTime(statistics.DurationMilliseconds)}");
+        return string.Join(Environment.NewLine, lines);
     }
 
     private static string AppendResultLine(string text, string line)
@@ -1647,12 +1802,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void RaiseCommandStates()
     {
         ConnectCommand.RaiseCanExecuteChanged();
+        ConnectSelectedProfileCommand.RaiseCanExecuteChanged();
         DisconnectCommand.RaiseCanExecuteChanged();
         OpenConnectionManagerCommand.RaiseCanExecuteChanged();
         PublishCommand.RaiseCanExecuteChanged();
         OpenPeriodCheckCommand.RaiseCanExecuteChanged();
         ClosePeriodCheckCommand.RaiseCanExecuteChanged();
         StartPeriodCheckCommand.RaiseCanExecuteChanged();
+        StopPeriodCheckCommand.RaiseCanExecuteChanged();
         DeleteProfileCommand.RaiseCanExecuteChanged();
         RenameFolderCommand.RaiseCanExecuteChanged();
         DeleteFolderCommand.RaiseCanExecuteChanged();

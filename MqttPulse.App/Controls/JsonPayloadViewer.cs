@@ -44,7 +44,7 @@ public sealed class JsonPayloadViewer : RichTextBox
     {
         e.Handled = true;
 
-        if (e.Delta == 0 || ExtentHeight <= ViewportHeight)
+        if (e.Delta == 0)
         {
             return;
         }
@@ -52,6 +52,25 @@ public sealed class JsonPayloadViewer : RichTextBox
         var direction = e.Delta > 0 ? -1 : 1;
         var wheelNotches = Math.Max(1.0, Math.Abs(e.Delta) / 120.0);
         var step = Math.Max(FontSize * 3.0, 36.0) * wheelNotches;
+
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+        {
+            if (ExtentWidth <= ViewportWidth)
+            {
+                return;
+            }
+
+            var maxHorizontalOffset = Math.Max(0, ExtentWidth - ViewportWidth);
+            var horizontalTarget = Math.Clamp(HorizontalOffset + (direction * step), 0, maxHorizontalOffset);
+            ScrollToHorizontalOffset(horizontalTarget);
+            return;
+        }
+
+        if (ExtentHeight <= ViewportHeight)
+        {
+            return;
+        }
+
         var maxOffset = Math.Max(0, ExtentHeight - ViewportHeight);
         var targetOffset = Math.Clamp(VerticalOffset + (direction * step), 0, maxOffset);
         ScrollToVerticalOffset(targetOffset);
@@ -79,7 +98,17 @@ public sealed class JsonPayloadViewer : RichTextBox
         try
         {
             _rendering = true;
-            Document = CreateDocument(text);
+            var paragraph = CreateParagraph(text);
+            BeginChange();
+            try
+            {
+                Document.Blocks.Clear();
+                Document.Blocks.Add(paragraph);
+            }
+            finally
+            {
+                EndChange();
+            }
         }
         finally
         {
@@ -106,6 +135,17 @@ public sealed class JsonPayloadViewer : RichTextBox
 
     private FlowDocument CreateDocument(string text)
     {
+        return new FlowDocument(CreateParagraph(text))
+        {
+            PagePadding = new Thickness(8, 4, 8, 4),
+            FontFamily = FontFamily,
+            FontSize = FontSize,
+            PageWidth = 4096
+        };
+    }
+
+    private Paragraph CreateParagraph(string text)
+    {
         var paragraph = new Paragraph
         {
             Margin = new Thickness(0),
@@ -122,13 +162,7 @@ public sealed class JsonPayloadViewer : RichTextBox
             paragraph.Inlines.Add(new Run(text) { Foreground = TextBrush });
         }
 
-        return new FlowDocument(paragraph)
-        {
-            PagePadding = new Thickness(8, 4, 8, 4),
-            FontFamily = FontFamily,
-            FontSize = FontSize,
-            PageWidth = 4096
-        };
+        return paragraph;
     }
 
     private static void AddJsonRuns(Paragraph paragraph, string text)

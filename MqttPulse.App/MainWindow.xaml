@@ -38,6 +38,7 @@
         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#D8EBE7" />
         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#14201E" />
         <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#E7F1EF" />
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <DropShadowEffect x:Key="ModalShadow"
                           BlurRadius="16"
                           ShadowDepth="6"
@@ -321,11 +322,11 @@
                         <ColumnDefinition Width="150" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" MinWidth="160" />
-                        <ColumnDefinition Width="260" />
-                        <ColumnDefinition Width="180" />
+                        <ColumnDefinition Width="*" MinWidth="50" />
+                        <ColumnDefinition Width="160" />
+                        <ColumnDefinition Width="80" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="4" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
@@ -366,10 +367,10 @@
                                TextTrimming="CharacterEllipsis" />
 
                     <TextBox Grid.Column="4"
-                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                              ToolTip="Topic search"
-                              MinWidth="220"
-                              Margin="14,0,0,0" />
+                               Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                               ToolTip="Topic search"
+                               MinWidth="140"
+                               Margin="14,0,0,0" />
 
                     <TextBlock Grid.Column="5"
                                Text="{Binding StatusMessage}"
@@ -408,9 +409,9 @@
 
             <Grid Margin="12">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="4*" MinWidth="410" />
-                    <ColumnDefinition Width="6" />
-                    <ColumnDefinition Width="5*" MinWidth="560" />
+                    <ColumnDefinition Width="6*" MinWidth="520" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="5*" MinWidth="500" />
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0"
@@ -464,79 +465,98 @@
 
                 <GridSplitter Grid.Column="1"
                               HorizontalAlignment="Stretch"
-                              Background="{StaticResource BorderBrushSoft}" />
+                              Background="{StaticResource BorderBrushSoft}"
+                              ResizeDirection="Columns"
+                              ResizeBehavior="PreviousAndNext"
+                              ShowsPreview="True"
+                              Cursor="SizeWE"
+                              ToolTip="좌우 영역 크기 조절" />
 
                 <Border Grid.Column="2"
                         Style="{StaticResource PanelBorderStyle}"
                         Padding="12">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                    <Grid Margin="0,0,16,0">
+                    <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="340" MinHeight="280" />
-                            <RowDefinition Height="8" />
-                            <RowDefinition Height="300" MinHeight="240" />
-                            <RowDefinition Height="8" />
-                            <RowDefinition Height="300" MinHeight="250" />
-                            <RowDefinition Height="8" />
-                            <RowDefinition Height="220" MinHeight="200" />
+                            <RowDefinition Height="3*" MinHeight="180" />
+                            <RowDefinition Height="7" />
+                            <RowDefinition Height="2*" MinHeight="135" />
+                            <RowDefinition Height="7" />
+                            <RowDefinition Height="2*" MinHeight="165" />
                         </Grid.RowDefinitions>
 
                         <Grid Grid.Row="0">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <DockPanel Margin="0,0,0,9">
-                                <Button DockPanel.Dock="Right"
-                                        Content="Copy"
-                                        Command="{Binding CopyValueCommand}"
-                                        Style="{StaticResource QuietButtonStyle}" />
-                                <TextBlock Text="Value"
-                                           Style="{StaticResource SectionTitleStyle}" />
-                            </DockPanel>
-                            <controls:JsonPayloadViewer Grid.Row="1"
-                                                        Text="{Binding ValuePayloadText, Mode=OneWay}"
-                                                        FontFamily="Consolas"
-                                                        FontSize="12"
-                                                        VerticalScrollBarVisibility="Auto"
-                                                        HorizontalScrollBarVisibility="Auto"
-                                                        BorderBrush="{StaticResource BorderBrushSoft}"
-                                                        Background="{StaticResource CodeBackgroundBrush}" />
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="220" />
+                                <ColumnDefinition Width="7" />
+                                <ColumnDefinition Width="*" MinWidth="220" />
+                            </Grid.ColumnDefinitions>
+
+                            <Grid Grid.Column="0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <DockPanel Margin="0,0,0,9">
+                                    <Button DockPanel.Dock="Right"
+                                            Content="Copy"
+                                            Command="{Binding CopyValueCommand}"
+                                            Style="{StaticResource QuietButtonStyle}" />
+                                    <TextBlock Text="Value"
+                                               Style="{StaticResource SectionTitleStyle}" />
+                                </DockPanel>
+                                <controls:JsonPayloadViewer Grid.Row="1"
+                                                            Text="{Binding ValuePayloadText, Mode=OneWay}"
+                                                            FontFamily="Consolas"
+                                                            FontSize="12"
+                                                            VerticalScrollBarVisibility="Auto"
+                                                            HorizontalScrollBarVisibility="Auto"
+                                                            BorderBrush="{StaticResource BorderBrushSoft}"
+                                                            Background="{StaticResource CodeBackgroundBrush}"
+                                                            ToolTip="Shift + 마우스 휠로 좌우 이동" />
+                            </Grid>
+
+                            <GridSplitter Grid.Column="1"
+                                          HorizontalAlignment="Stretch"
+                                          Background="{StaticResource BorderBrushSoft}"
+                                          ResizeDirection="Columns"
+                                          ResizeBehavior="PreviousAndNext"
+                                          ShowsPreview="True"
+                                          Cursor="SizeWE" />
+
+                            <Grid Grid.Column="2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <DockPanel Margin="0,0,0,9">
+                                    <Button DockPanel.Dock="Right"
+                                            Content="Copy"
+                                            Command="{Binding CopySelectedCommand}"
+                                            Style="{StaticResource QuietButtonStyle}" />
+                                    <TextBlock Text="Selected"
+                                               Style="{StaticResource SectionTitleStyle}" />
+                                </DockPanel>
+                                <controls:JsonPayloadViewer Grid.Row="1"
+                                                            Text="{Binding SelectedPayloadText, Mode=OneWay}"
+                                                            FontFamily="Consolas"
+                                                            FontSize="12"
+                                                            VerticalScrollBarVisibility="Auto"
+                                                            HorizontalScrollBarVisibility="Auto"
+                                                            BorderBrush="{StaticResource BorderBrushSoft}"
+                                                            Background="{StaticResource CodeBackgroundBrush}"
+                                                            ToolTip="Shift + 마우스 휠로 좌우 이동" />
+                            </Grid>
                         </Grid>
 
                         <GridSplitter Grid.Row="1"
                                       HorizontalAlignment="Stretch"
-                                      Background="{StaticResource BorderBrushSoft}" />
+                                      Background="{StaticResource BorderBrushSoft}"
+                                      ResizeDirection="Rows"
+                                      ResizeBehavior="PreviousAndNext"
+                                      ShowsPreview="True"
+                                      Cursor="SizeNS" />
 
                         <Grid Grid.Row="2">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <DockPanel Margin="0,0,0,9">
-                                <Button DockPanel.Dock="Right"
-                                        Content="Copy"
-                                        Command="{Binding CopySelectedCommand}"
-                                        Style="{StaticResource QuietButtonStyle}" />
-                                <TextBlock Text="Selected"
-                                           Style="{StaticResource SectionTitleStyle}" />
-                            </DockPanel>
-                            <controls:JsonPayloadViewer Grid.Row="1"
-                                                        Text="{Binding SelectedPayloadText, Mode=OneWay}"
-                                                        FontFamily="Consolas"
-                                                        FontSize="12"
-                                                        VerticalScrollBarVisibility="Auto"
-                                                        HorizontalScrollBarVisibility="Auto"
-                                                        BorderBrush="{StaticResource BorderBrushSoft}"
-                                                        Background="{StaticResource CodeBackgroundBrush}" />
-                        </Grid>
-
-                        <GridSplitter Grid.Row="3"
-                                      HorizontalAlignment="Stretch"
-                                      Background="{StaticResource BorderBrushSoft}" />
-
-                        <Grid Grid.Row="4">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
@@ -574,11 +594,15 @@
                             </DataGrid>
                         </Grid>
 
-                        <GridSplitter Grid.Row="5"
+                        <GridSplitter Grid.Row="3"
                                       HorizontalAlignment="Stretch"
-                                      Background="{StaticResource BorderBrushSoft}" />
+                                      Background="{StaticResource BorderBrushSoft}"
+                                      ResizeDirection="Rows"
+                                      ResizeBehavior="PreviousAndNext"
+                                      ShowsPreview="True"
+                                      Cursor="SizeNS" />
 
-                        <Grid Grid.Row="6">
+                        <Grid Grid.Row="4">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
@@ -632,7 +656,6 @@
                             </Grid>
                         </Grid>
                     </Grid>
-                    </ScrollViewer>
                 </Border>
             </Grid>
         </DockPanel>
@@ -982,7 +1005,7 @@
                                     Command="{Binding SaveProfilesCommand}"
                                     Margin="0,0,10,0" />
                             <Button Content="Connect"
-                                    Command="{Binding ConnectCommand}"
+                                    Command="{Binding ConnectSelectedProfileCommand}"
                                     Style="{StaticResource PrimaryButtonStyle}"
                                     MinWidth="116" />
                         </StackPanel>
@@ -1053,6 +1076,8 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="12" />
                                 <ColumnDefinition Width="120" />
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
@@ -1063,6 +1088,10 @@
                             <TextBlock Grid.Row="0"
                                        Grid.Column="0"
                                        Text="토픽"
+                                       Style="{StaticResource FieldLabelStyle}" />
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="2"
+                                       Text="측정 시간"
                                        Style="{StaticResource FieldLabelStyle}" />
                             <Grid x:Name="PeriodTopicInputHost"
                                   Grid.Row="1"
@@ -1136,12 +1165,28 @@
                                     </Border>
                                 </Popup>
                             </Grid>
+                            <ComboBox Grid.Row="1"
+                                      Grid.Column="2"
+                                      ItemsSource="{Binding PeriodCheckDurationOptions}"
+                                      Text="{Binding PeriodCheckDurationText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      IsEditable="True"
+                                      IsTextSearchEnabled="False"
+                                      IsEnabled="{Binding IsPeriodCheckIdle}"
+                                      ToolTip="10초, 30초, 1분 또는 원하는 초를 직접 입력" />
                             <Button Grid.Row="1"
-                                    Grid.Column="2"
+                                    Grid.Column="4"
                                     Content="측정 시작"
                                     Command="{Binding StartPeriodCheckCommand}"
                                     Style="{StaticResource PrimaryButtonStyle}"
-                                    MinHeight="36" />
+                                    MinHeight="36"
+                                    Visibility="{Binding IsPeriodCheckIdle, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <Button Grid.Row="1"
+                                    Grid.Column="4"
+                                    Content="측정 중단"
+                                    Command="{Binding StopPeriodCheckCommand}"
+                                    Style="{StaticResource DangerButtonStyle}"
+                                    MinHeight="36"
+                                    Visibility="{Binding IsPeriodCheckRunning, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </Grid>
 
                         <Border Grid.Row="1"
@@ -1163,7 +1208,7 @@
                                            Text="{Binding PeriodCheckStatus}"
                                            TextTrimming="CharacterEllipsis" />
                                 <TextBlock Grid.Column="2"
-                                           Text="10초 측정"
+                                           Text="{Binding PeriodCheckDurationSummaryText}"
                                            Foreground="{StaticResource MutedBrush}"
                                            Margin="16,0,0,0" />
                             </Grid>
