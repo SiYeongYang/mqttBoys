@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 using MqttPulse.App;
+using MqttPulse.App.Models;
 using MqttPulse.App.ViewModels;
 
 namespace MqttPulse.Tests;
@@ -13,7 +14,7 @@ namespace MqttPulse.Tests;
 public sealed class MainLayoutTests
 {
     [TestMethod]
-    public void DefaultLayoutKeepsTopicsMuchWiderThanDetailAtDesktopAndLaptopWidths()
+    public void DefaultLayoutKeepsTopicsMuchNarrowerThanDetailAtDesktopAndLaptopWidths()
     {
         RunInWindow(window =>
         {
@@ -21,17 +22,30 @@ public sealed class MainLayoutTests
             var header = (Border)window.FindName("MainHeader");
 
             Assert.AreEqual(46, header.ActualHeight, 0.5);
-            Assert.IsGreaterThan(content.ColumnDefinitions[2].ActualWidth * 2, content.ColumnDefinitions[0].ActualWidth);
+            foreach (var viewport in new[]
+                     {
+                         new Size(1920, 1080),
+                         new Size(1440, 900),
+                         new Size(1366, 768),
+                         new Size(1100, 720)
+                     })
+            {
+                window.Width = viewport.Width;
+                window.Height = viewport.Height;
+                window.UpdateLayout();
 
-            window.Width = 1100;
-            window.Height = 720;
-            window.UpdateLayout();
-
-            Assert.IsGreaterThan(0, content.ColumnDefinitions[2].ActualWidth);
-            Assert.IsGreaterThan(content.ColumnDefinitions[2].ActualWidth, content.ColumnDefinitions[0].ActualWidth);
-            Assert.IsLessThanOrEqualTo(
-                content.ActualWidth + 1,
-                content.ColumnDefinitions.Sum(x => x.ActualWidth));
+                Assert.IsGreaterThan(content.ColumnDefinitions[0].ActualWidth * 2, content.ColumnDefinitions[2].ActualWidth);
+                Assert.IsLessThanOrEqualTo(
+                    content.ActualWidth + 1,
+                    content.ColumnDefinitions.Sum(x => x.ActualWidth));
+                Assert.IsLessThanOrEqualTo(
+                    header.ActualWidth + 1,
+                    ((FrameworkElement)header.Child).DesiredSize.Width);
+                var detail = (Grid)window.FindName("MainDetailGrid");
+                Assert.IsLessThanOrEqualTo(
+                    detail.ActualHeight + 1,
+                    detail.RowDefinitions.Sum(x => x.ActualHeight));
+            }
         });
     }
 
@@ -86,8 +100,8 @@ public sealed class MainLayoutTests
             verticalScrollBar.ApplyTemplate();
             horizontalScrollBar.ApplyTemplate();
 
-            Assert.AreEqual(10, verticalScrollBar.Width, 0.1);
-            Assert.AreEqual(10, horizontalScrollBar.Height, 0.1);
+            Assert.AreEqual(7, verticalScrollBar.Width, 0.1);
+            Assert.AreEqual(7, horizontalScrollBar.Height, 0.1);
 
             var splitter = new GridSplitter
             {
@@ -98,6 +112,72 @@ public sealed class MainLayoutTests
 
             Assert.AreEqual(1, line.Width, 0.1);
         });
+    }
+
+    [TestMethod]
+    public void HeaderOrderAndPausePlacementMatchTheInspectionWorkflow()
+    {
+        RunInWindow(window =>
+        {
+            var header = (Border)window.FindName("MainHeader");
+            var caption = (TextBlock)window.FindName("ConnectedBrokerCaption");
+            var connection = (Button)window.FindName("ConnectionToggleButton");
+            var search = (TextBox)window.FindName("HeaderSearchInput");
+            var valuePanel = (Grid)window.FindName("ValuePanel");
+            var pause = (Button)window.FindName("ValuePauseButton");
+            var detail = (Grid)window.FindName("MainDetailGrid");
+            var publishPayload = (TextBox)window.FindName("PublishPayloadInput");
+
+            Assert.AreEqual(3, Grid.GetColumn(caption));
+            Assert.AreEqual(4, Grid.GetColumn(connection));
+            Assert.AreEqual(5, Grid.GetColumn(search));
+            Assert.IsTrue(pause.IsDescendantOf(valuePanel));
+            Assert.IsFalse(pause.IsDescendantOf(header));
+            Assert.AreEqual(170, detail.RowDefinitions[2].ActualHeight, 0.5);
+            Assert.IsGreaterThan(100, publishPayload.ActualHeight);
+        });
+    }
+
+    [TestMethod]
+    public void ConnectionTreeUsesDifferentFolderAndBrokerIcons()
+    {
+        RunInWindow(window =>
+        {
+            var template = (HierarchicalDataTemplate)window.FindResource(
+                new DataTemplateKey(typeof(ProfileTreeNodeViewModel)));
+            var folder = new ProfileTreeNodeViewModel("Factory", "Factory", profile: null);
+            var broker = new ProfileTreeNodeViewModel(
+                "Edge broker",
+                "Factory",
+                new BrokerProfile { Host = "172.16.1.224", Port = 1883 });
+
+            var folderPresenter = RealizeTemplate(template, folder);
+            var brokerPresenter = RealizeTemplate(template, broker);
+            var folderIcon = (FrameworkElement)template.FindName("FolderIcon", folderPresenter);
+            var folderBrokerIcon = (FrameworkElement)template.FindName("BrokerIcon", folderPresenter);
+            var brokerFolderIcon = (FrameworkElement)template.FindName("FolderIcon", brokerPresenter);
+            var brokerIcon = (FrameworkElement)template.FindName("BrokerIcon", brokerPresenter);
+
+            Assert.AreEqual(Visibility.Visible, folderIcon.Visibility);
+            Assert.AreEqual(Visibility.Collapsed, folderBrokerIcon.Visibility);
+            Assert.AreEqual(Visibility.Collapsed, brokerFolderIcon.Visibility);
+            Assert.AreEqual(Visibility.Visible, brokerIcon.Visibility);
+        });
+    }
+
+    private static ContentPresenter RealizeTemplate(
+        HierarchicalDataTemplate template,
+        ProfileTreeNodeViewModel node)
+    {
+        var presenter = new ContentPresenter
+        {
+            Content = node,
+            ContentTemplate = template
+        };
+        presenter.Measure(new Size(280, 80));
+        presenter.Arrange(new Rect(0, 0, 280, 80));
+        presenter.UpdateLayout();
+        return presenter;
     }
 
     private static void RunInWindow(Action<MainWindow> test)

@@ -21,7 +21,7 @@
 
 [Releases](../../releases)에서 최신 `mqttBoys.exe`를 내려받아 실행합니다. 별도 설치나 추가 런타임은 필요하지 않습니다.
 
-현재 버전: **0.0.6**
+현재 버전: **0.0.7**
 
 ## 지원 환경
 
@@ -44,6 +44,6 @@ dotnet publish .\MqttPulse.App\MqttPulse.App.csproj -c Release -r win-x64 --self
 `v*` 형식의 태그를 푸시하면 GitHub Actions가 테스트 후 Windows x64 단일 실행 파일을 빌드하여 Release에 첨부합니다.
 
 ```powershell
-git tag v0.0.6
-git push origin v0.0.6
+git tag v0.0.7
+git push origin v0.0.7
 ```

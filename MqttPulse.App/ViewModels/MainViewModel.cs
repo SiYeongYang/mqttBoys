@@ -16,7 +16,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private const int MaxMessagesPerUiTick = 5_000;
     private const int MaxPendingMessages = 10_000;
     private const long MaxPendingPayloadCharacters = 16_000_000;
-    private const int HistoryDisplayLimit = 300;
+    private const int HistoryDisplayLimit = 100;
+    private static readonly long UiDrainBudgetTicks = Stopwatch.Frequency / 100;
     private static readonly long ValueRefreshMinTicks = Stopwatch.Frequency / 10;
     private static readonly long HistoryRefreshMinTicks = Stopwatch.Frequency / 2;
     private const int SearchResultLimit = 500;
@@ -30,6 +31,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly HashSet<string> _profileFolderPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ProfileStore _profileStore;
     private readonly MqttClientService _mqttClient = new();
+    private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _flushTimer;
     private CancellationTokenSource? _periodCheckCancellation;
     private ProfileTreeNodeViewModel? _selectedProfileNode;
@@ -71,9 +73,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private int _pendingCount;
     private long _lastValueRefreshTimestamp;
     private long _lastHistoryRefreshTimestamp;
+    private MqttMessageSnapshot? _pendingValueFormatMessage;
+    private int _valueFormatWorkerRunning;
+    private volatile bool _isDisposed;
 
     public MainViewModel(ProfileStore? profileStore = null)
     {
+        _dispatcher = Dispatcher.CurrentDispatcher;
         _profileStore = profileStore ?? new ProfileStore();
         var library = _profileStore.LoadLibrary();
         Profiles = new ObservableCollection<BrokerProfile>(library.Profiles);
@@ -122,9 +128,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _mqttClient.MessageReceived += OnMessageReceived;
         _mqttClient.StatusChanged += OnStatusChanged;
 
-        _flushTimer = new DispatcherTimer(DispatcherPriority.Background)
+        _flushTimer = new DispatcherTimer(DispatcherPriority.Input)
         {
-            Interval = TimeSpan.FromMilliseconds(100)
+            Interval = TimeSpan.FromMilliseconds(50)
         };
         _flushTimer.Tick += (_, _) => DrainPendingMessages();
         _flushTimer.Start();
@@ -263,8 +269,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string SelectedProfileCaption => (_connectedProfile ?? SelectedProfile) is not { } profile
-        ? "No broker selected"
+    public string SelectedProfileCaption => _connectedProfile is not { } profile
+        ? "Not connected"
         : $"{profile.Name} ({profile.Transport}://{profile.Host}:{profile.Port})";
 
     public TopicViewModel? SelectedTopic
@@ -656,6 +662,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _isDisposed = true;
+        Interlocked.Exchange(ref _pendingValueFormatMessage, null);
         _periodCheckCancellation?.Cancel();
         _flushTimer.Stop();
         _mqttClient.Dispose();
@@ -1372,9 +1380,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var searchNeedsRefresh = false;
         var processed = 0;
         var changedTopics = new HashSet<TopicViewModel>();
+        var drainStarted = Stopwatch.GetTimestamp();
 
-        // Batch UI updates so fast brokers do not cause one layout pass per MQTT packet.
-        while (processed < MaxMessagesPerUiTick && _pendingMessages.TryDequeue(out var message))
+        // Keep each UI batch short so counters and input stay responsive under sustained traffic.
+        while (processed < MaxMessagesPerUiTick
+               && (processed == 0 || Stopwatch.GetTimestamp() - drainStarted < UiDrainBudgetTicks)
+               && _pendingMessages.TryDequeue(out var message))
         {
             Interlocked.Decrement(ref _pendingQueueCount);
             Interlocked.Add(ref _pendingPayloadCharacters, -message.PayloadLength);
@@ -1397,7 +1408,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (ShouldRefreshValue())
             {
-                RefreshSelectedTopicValue();
+                QueueSelectedTopicValueRefresh();
             }
 
             if (ShouldRefreshHistory())
@@ -1702,6 +1713,71 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         ValuePayloadText = string.Empty;
+    }
+
+    private void QueueSelectedTopicValueRefresh()
+    {
+        if (SelectedTopic?.LastMessage is not { } message)
+        {
+            ValuePayloadText = string.Empty;
+            return;
+        }
+
+        Interlocked.Exchange(ref _pendingValueFormatMessage, message);
+        StartValueFormatWorker();
+    }
+
+    private void StartValueFormatWorker()
+    {
+        if (_isDisposed || Interlocked.CompareExchange(ref _valueFormatWorkerRunning, 1, 0) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(ProcessPendingValueFormatsAsync);
+    }
+
+    private async Task ProcessPendingValueFormatsAsync()
+    {
+        try
+        {
+            while (!_isDisposed
+                   && Interlocked.Exchange(ref _pendingValueFormatMessage, null) is { } message)
+            {
+                var formatted = FormatPayloadForDetail(message);
+                if (_isDisposed)
+                {
+                    return;
+                }
+
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    if (!_isDisposed
+                        && !FreezeDetail
+                        && !HistoryPaused
+                        && ReferenceEquals(SelectedTopic?.LastMessage, message))
+                    {
+                        ValuePayloadText = formatted;
+                    }
+                }, DispatcherPriority.DataBind);
+            }
+        }
+        catch (TaskCanceledException) when (_isDisposed || _dispatcher.HasShutdownStarted)
+        {
+            // Normal shutdown while a formatted Value is waiting for the UI thread.
+        }
+        catch (InvalidOperationException) when (_isDisposed || _dispatcher.HasShutdownStarted)
+        {
+            // The dispatcher stopped between formatting and posting the result.
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _valueFormatWorkerRunning, 0);
+            if (!_isDisposed && Volatile.Read(ref _pendingValueFormatMessage) is not null)
+            {
+                StartValueFormatWorker();
+            }
+        }
     }
 
     private void ClearPendingMessages()

@@ -220,8 +220,8 @@
         </Style>
 
         <Style x:Key="ScrollThumbStyle" TargetType="Thumb">
-            <Setter Property="MinWidth" Value="6" />
-            <Setter Property="MinHeight" Value="6" />
+            <Setter Property="MinWidth" Value="4" />
+            <Setter Property="MinHeight" Value="4" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Thumb">
@@ -243,11 +243,11 @@
         </Style>
 
         <Style TargetType="ScrollBar">
-            <Setter Property="Background" Value="#EEF3F2" />
+            <Setter Property="Background" Value="Transparent" />
             <Setter Property="Focusable" Value="False" />
             <Style.Triggers>
                 <Trigger Property="Orientation" Value="Vertical">
-                    <Setter Property="Width" Value="10" />
+                    <Setter Property="Width" Value="7" />
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ScrollBar">
@@ -275,7 +275,7 @@
                     </Setter>
                 </Trigger>
                 <Trigger Property="Orientation" Value="Horizontal">
-                    <Setter Property="Height" Value="10" />
+                    <Setter Property="Height" Value="7" />
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ScrollBar">
@@ -442,20 +442,85 @@
 
         <HierarchicalDataTemplate DataType="{x:Type vm:ProfileTreeNodeViewModel}"
                                   ItemsSource="{Binding Children}">
-            <Grid Margin="1,3" MinHeight="30">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock Text="{Binding Name}"
-                           FontWeight="SemiBold"
-                           TextTrimming="CharacterEllipsis" />
-                <TextBlock Grid.Row="1"
-                           Text="{Binding DetailText}"
-                           Foreground="{StaticResource MutedBrush}"
-                           FontSize="12"
-                           TextTrimming="CharacterEllipsis" />
+            <Grid Margin="1,2" MinHeight="28">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Grid x:Name="FolderIcon"
+                      Width="15"
+                      Height="14"
+                      HorizontalAlignment="Left"
+                      VerticalAlignment="Top"
+                      Margin="0,2,0,0"
+                      ToolTip="Folder">
+                    <Border Width="7"
+                            Height="4"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Background="#D9871F"
+                            CornerRadius="1" />
+                    <Border Margin="0,3,0,0"
+                            Background="#E69A2E"
+                            CornerRadius="1" />
+                    <Border Margin="1,5,1,2"
+                            Background="#F2B24D"
+                            CornerRadius="1" />
+                </Grid>
+
+                <Grid x:Name="BrokerIcon"
+                      Width="14"
+                      Height="14"
+                      HorizontalAlignment="Left"
+                      VerticalAlignment="Top"
+                      Margin="0,2,0,0"
+                      Visibility="Collapsed"
+                      ToolTip="Broker">
+                    <Border Height="5"
+                            VerticalAlignment="Top"
+                            Background="#337FAE"
+                            CornerRadius="7,7,2,2" />
+                    <Border Margin="0,3,0,2"
+                            Background="#4593C1" />
+                    <Border Height="5"
+                            VerticalAlignment="Bottom"
+                            Background="#2F779F"
+                            CornerRadius="2,2,7,7" />
+                    <Border Height="3"
+                            Margin="1,0"
+                            VerticalAlignment="Bottom"
+                            Background="#69ADD2"
+                            CornerRadius="6" />
+                </Grid>
+
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="ProfileNodeName"
+                               Text="{Binding Name}"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="ProfileNodeDetail"
+                               Grid.Row="1"
+                               Text="{Binding DetailText}"
+                               Foreground="{StaticResource MutedBrush}"
+                               FontSize="11.5"
+                               FontStyle="Italic"
+                               TextTrimming="CharacterEllipsis"
+                               Visibility="Collapsed" />
+                </Grid>
             </Grid>
+            <HierarchicalDataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsFolder}" Value="False">
+                    <Setter TargetName="FolderIcon" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="BrokerIcon" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="ProfileNodeName" Property="FontWeight" Value="Normal" />
+                    <Setter TargetName="ProfileNodeDetail" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </HierarchicalDataTemplate.Triggers>
         </HierarchicalDataTemplate>
     </Window.Resources>
 
@@ -471,11 +536,10 @@
                         <ColumnDefinition Width="138" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" MinWidth="50" />
-                        <ColumnDefinition Width="210" />
-                        <ColumnDefinition Width="125" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="220" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0"
@@ -516,45 +580,37 @@
                         </Button.ContextMenu>
                     </Button>
 
-                    <Button Grid.Column="3"
-                            Content="{Binding HistoryPauseButtonText}"
-                            Command="{Binding ToggleHistoryPauseCommand}"
-                            Style="{StaticResource ToolbarButtonStyle}"
-                            Margin="0,0,10,0" />
-
-                    <TextBlock Grid.Column="4"
+                    <TextBlock x:Name="ConnectedBrokerCaption"
+                               Grid.Column="3"
                                Text="{Binding SelectedProfileCaption}"
                                Foreground="#D9E8E5"
                                VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" />
-
-                    <TextBox Grid.Column="5"
-                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                             ToolTip="Topic search"
-                             MinWidth="160"
-                             Margin="12,0,0,0" />
-
-                    <TextBlock Grid.Column="6"
-                               Text="{Binding StatusMessage}"
-                               Foreground="#D9E8E5"
-                               VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis"
-                               Margin="14,0" />
+                               MaxWidth="320"
+                               Margin="12,0,10,0" />
 
-                    <Button Grid.Column="7"
+                    <Button x:Name="ConnectionToggleButton"
+                            Grid.Column="4"
                             Content="{Binding ConnectionButtonText}"
                             Command="{Binding ToggleConnectionCommand}"
                             Style="{StaticResource PrimaryButtonStyle}"
                             MinWidth="92" />
+
+                    <TextBox x:Name="HeaderSearchInput"
+                             Grid.Column="5"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Topic search"
+                             MinWidth="160"
+                             Margin="12,0,0,0" />
                 </Grid>
             </Border>
 
             <Grid x:Name="MainContentGrid"
                   Margin="8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="72*" MinWidth="620" />
+                    <ColumnDefinition Width="30*" MinWidth="300" />
                     <ColumnDefinition Width="8" />
-                    <ColumnDefinition Width="28*" MinWidth="340" />
+                    <ColumnDefinition Width="70*" MinWidth="640" />
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0"
@@ -600,13 +656,13 @@
                 <Border Grid.Column="2"
                         Style="{StaticResource PanelBorderStyle}"
                         Padding="12">
-                    <Grid>
+                    <Grid x:Name="MainDetailGrid">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="3*" MinHeight="180" />
+                            <RowDefinition Height="*" MinHeight="180" />
                             <RowDefinition Height="7" />
-                            <RowDefinition Height="2*" MinHeight="135" />
+                            <RowDefinition Height="170" />
                             <RowDefinition Height="7" />
-                            <RowDefinition Height="2*" MinHeight="165" />
+                            <RowDefinition Height="*" MinHeight="210" />
                         </Grid.RowDefinitions>
 
                         <Grid Grid.Row="0">
@@ -616,16 +672,24 @@
                                 <ColumnDefinition Width="*" MinWidth="145" />
                             </Grid.ColumnDefinitions>
 
-                            <Grid Grid.Column="0">
+                            <Grid x:Name="ValuePanel"
+                                  Grid.Column="0">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
                                 <DockPanel Margin="0,0,0,9">
-                                    <Button DockPanel.Dock="Right"
-                                            Content="Copy"
-                                            Command="{Binding CopyValueCommand}"
-                                            Style="{StaticResource QuietButtonStyle}" />
+                                    <StackPanel DockPanel.Dock="Right"
+                                                Orientation="Horizontal">
+                                        <Button x:Name="ValuePauseButton"
+                                                Content="{Binding HistoryPauseButtonText}"
+                                                Command="{Binding ToggleHistoryPauseCommand}"
+                                                Style="{StaticResource QuietButtonStyle}"
+                                                Margin="0,0,4,0" />
+                                        <Button Content="Copy"
+                                                Command="{Binding CopyValueCommand}"
+                                                Style="{StaticResource QuietButtonStyle}" />
+                                    </StackPanel>
                                     <TextBlock Text="Value"
                                                Style="{StaticResource SectionTitleStyle}" />
                                 </DockPanel>
@@ -775,7 +839,8 @@
                                     </Border>
                                 </Popup>
                             </Grid>
-                            <TextBox Grid.Row="2"
+                            <TextBox x:Name="PublishPayloadInput"
+                                     Grid.Row="2"
                                      Text="{Binding PublishPayload, UpdateSourceTrigger=PropertyChanged}"
                                      AcceptsReturn="True"
                                      AcceptsTab="True"
@@ -787,34 +852,34 @@
                                      VerticalContentAlignment="Top"
                                      Background="{StaticResource CodeBackgroundBrush}" />
                             <Grid Grid.Row="3" Margin="0,8,0,0">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="QoS"
-                                               VerticalAlignment="Center"
-                                               Margin="0,0,8,0" />
-                                    <ComboBox Width="72"
-                                              ItemsSource="{Binding QosOptions}"
-                                              SelectedItem="{Binding PublishQos}" />
-                                    <CheckBox Content="retain"
-                                              IsChecked="{Binding PublishRetain}"
-                                              VerticalAlignment="Center"
-                                              Margin="14,0" />
-                                </StackPanel>
-                                <StackPanel Grid.Row="1"
-                                            Orientation="Horizontal"
-                                            HorizontalAlignment="Right"
-                                            Margin="0,6,0,0">
-                                    <Button Content="Format JSON"
-                                            Command="{Binding FormatPublishJsonCommand}"
-                                            Margin="0,0,8,0" />
-                                    <Button Content="Publish"
-                                            Command="{Binding PublishCommand}"
-                                            Style="{StaticResource PrimaryButtonStyle}"
-                                            MinWidth="100" />
-                                </StackPanel>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="72" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="QoS"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0" />
+                                <ComboBox Grid.Column="1"
+                                          ItemsSource="{Binding QosOptions}"
+                                          SelectedItem="{Binding PublishQos}" />
+                                <CheckBox Grid.Column="2"
+                                          Content="retain"
+                                          IsChecked="{Binding PublishRetain}"
+                                          VerticalAlignment="Center"
+                                          Margin="14,0" />
+                                <Button Grid.Column="4"
+                                        Content="Format JSON"
+                                        Command="{Binding FormatPublishJsonCommand}"
+                                        Margin="0,0,8,0" />
+                                <Button Grid.Column="5"
+                                        Content="Publish"
+                                        Command="{Binding PublishCommand}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        MinWidth="100" />
                             </Grid>
                         </Grid>
                     </Grid>
@@ -870,7 +935,7 @@
 
                     <Border Grid.Row="1"
                             Grid.Column="0"
-                            Background="#F0F5F4"
+                            Background="#F8FAFA"
                             Padding="16">
                         <Grid>
                             <Grid.RowDefinitions>
