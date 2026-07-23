@@ -208,6 +208,149 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="ScrollPageButtonStyle" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ScrollThumbStyle" TargetType="Thumb">
+            <Setter Property="MinWidth" Value="6" />
+            <Setter Property="MinHeight" Value="6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="ThumbSurface"
+                                Margin="1"
+                                Background="#AABAB7"
+                                CornerRadius="3" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ThumbSurface" Property="Background" Value="#718B86" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="ThumbSurface" Property="Background" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="#EEF3F2" />
+            <Setter Property="Focusable" Value="False" />
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Vertical">
+                    <Setter Property="Width" Value="10" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ScrollBar">
+                                <Border Background="{TemplateBinding Background}">
+                                    <Track x:Name="PART_Track"
+                                           IsDirectionReversed="True"
+                                           Orientation="Vertical">
+                                        <Track.DecreaseRepeatButton>
+                                            <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                                          CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                                          Style="{StaticResource ScrollPageButtonStyle}" />
+                                        </Track.DecreaseRepeatButton>
+                                        <Track.Thumb>
+                                            <Thumb Style="{StaticResource ScrollThumbStyle}" />
+                                        </Track.Thumb>
+                                        <Track.IncreaseRepeatButton>
+                                            <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                                          CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                                          Style="{StaticResource ScrollPageButtonStyle}" />
+                                        </Track.IncreaseRepeatButton>
+                                    </Track>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Height" Value="10" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ScrollBar">
+                                <Border Background="{TemplateBinding Background}">
+                                    <Track x:Name="PART_Track"
+                                           IsDirectionReversed="False"
+                                           Orientation="Horizontal">
+                                        <Track.DecreaseRepeatButton>
+                                            <RepeatButton Command="{x:Static ScrollBar.PageLeftCommand}"
+                                                          CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                                          Style="{StaticResource ScrollPageButtonStyle}" />
+                                        </Track.DecreaseRepeatButton>
+                                        <Track.Thumb>
+                                            <Thumb Style="{StaticResource ScrollThumbStyle}" />
+                                        </Track.Thumb>
+                                        <Track.IncreaseRepeatButton>
+                                            <RepeatButton Command="{x:Static ScrollBar.PageRightCommand}"
+                                                          CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                                          Style="{StaticResource ScrollPageButtonStyle}" />
+                                        </Track.IncreaseRepeatButton>
+                                    </Track>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="VerticalSplitterStyle" TargetType="GridSplitter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Grid Background="Transparent">
+                            <Border x:Name="SplitterLine"
+                                    Width="1"
+                                    HorizontalAlignment="Center"
+                                    Background="{StaticResource BorderBrushSoft}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SplitterLine" Property="Width" Value="2" />
+                                <Setter TargetName="SplitterLine" Property="Background" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="HorizontalSplitterStyle" TargetType="GridSplitter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Grid Background="Transparent">
+                            <Border x:Name="SplitterLine"
+                                    Height="1"
+                                    VerticalAlignment="Center"
+                                    Background="{StaticResource BorderBrushSoft}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SplitterLine" Property="Height" Value="2" />
+                                <Setter TargetName="SplitterLine" Property="Background" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="TreeView">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -220,6 +363,11 @@
             <Setter Property="SnapsToDevicePixels" Value="True" />
             <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
             <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSearchVisible}" Value="False">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="ProfileTreeItemStyle"
@@ -313,20 +461,20 @@
 
     <Grid>
         <DockPanel LastChildFill="True">
-            <Border DockPanel.Dock="Top"
-                    Height="58"
+            <Border x:Name="MainHeader"
+                    DockPanel.Dock="Top"
+                    Height="46"
                     Background="{StaticResource ChromeBrush}"
-                    Padding="14,10">
+                    Padding="10,6">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="150" />
+                        <ColumnDefinition Width="138" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" MinWidth="50" />
-                        <ColumnDefinition Width="160" />
-                        <ColumnDefinition Width="80" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="4" />
+                        <ColumnDefinition Width="210" />
+                        <ColumnDefinition Width="125" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
@@ -334,17 +482,17 @@
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center">
                         <Image Source="Assets/mqttBoys.ico"
-                               Width="28"
-                               Height="28"
-                               Margin="0,0,9,0" />
+                               Width="24"
+                               Height="24"
+                               Margin="0,0,7,0" />
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="mqttBoys"
                                        Foreground="White"
-                                       FontSize="18"
+                                       FontSize="16"
                                        FontWeight="SemiBold" />
                             <TextBlock Text="{Binding AppVersionText}"
                                        Foreground="#A9C0BC"
-                                       FontSize="10.5" />
+                                       FontSize="9.5" />
                         </StackPanel>
                     </StackPanel>
 
@@ -355,63 +503,58 @@
                              Margin="0,0,8,0" />
 
                     <Button Grid.Column="2"
-                             Content="주기 체크"
-                             Command="{Binding OpenPeriodCheckCommand}"
+                             x:Name="ToolsButton"
+                             Content="Tools"
+                             Click="ToolsButton_Click"
                              Style="{StaticResource ToolbarButtonStyle}"
-                             Margin="0,0,12,0" />
+                             Margin="0,0,6,0">
+                        <Button.ContextMenu>
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <MenuItem Header="주기 체크"
+                                          Command="{Binding OpenPeriodCheckCommand}" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
 
-                    <TextBlock Grid.Column="3"
+                    <Button Grid.Column="3"
+                            Content="{Binding HistoryPauseButtonText}"
+                            Command="{Binding ToggleHistoryPauseCommand}"
+                            Style="{StaticResource ToolbarButtonStyle}"
+                            Margin="0,0,10,0" />
+
+                    <TextBlock Grid.Column="4"
                                Text="{Binding SelectedProfileCaption}"
                                Foreground="#D9E8E5"
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" />
 
-                    <TextBox Grid.Column="4"
-                               Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                               ToolTip="Topic search"
-                               MinWidth="140"
-                               Margin="14,0,0,0" />
+                    <TextBox Grid.Column="5"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Topic search"
+                             MinWidth="160"
+                             Margin="12,0,0,0" />
 
-                    <TextBlock Grid.Column="5"
+                    <TextBlock Grid.Column="6"
                                Text="{Binding StatusMessage}"
                                Foreground="#D9E8E5"
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis"
-                               Margin="18,0" />
+                               Margin="14,0" />
 
-                    <StackPanel Grid.Column="6"
-                                Orientation="Horizontal"
-                                VerticalAlignment="Center">
-                        <TextBlock Text="{Binding TopicCount, StringFormat=Topics {0:N0}}"
-                                   Foreground="#EDF5F3"
-                                   Margin="0,0,12,0" />
-                        <TextBlock Text="{Binding ReceivedMessages, StringFormat=Messages {0:N0}}"
-                                   Foreground="#EDF5F3"
-                                   Margin="0,0,12,0" />
-                        <TextBlock Text="{Binding PendingCount, StringFormat=Queue {0:N0}}"
-                                   Foreground="#BFD7D2" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="8"
-                                Orientation="Horizontal"
-                                VerticalAlignment="Center"
-                                Margin="16,0,0,0">
-                        <Button Content="Connect"
-                                 Command="{Binding ConnectCommand}"
-                                 Style="{StaticResource PrimaryButtonStyle}"
-                                 Margin="0,0,8,0" />
-                        <Button Content="Disconnect"
-                                Command="{Binding DisconnectCommand}"
-                                Style="{StaticResource ToolbarButtonStyle}" />
-                    </StackPanel>
+                    <Button Grid.Column="7"
+                            Content="{Binding ConnectionButtonText}"
+                            Command="{Binding ToggleConnectionCommand}"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            MinWidth="92" />
                 </Grid>
             </Border>
 
-            <Grid Margin="12">
+            <Grid x:Name="MainContentGrid"
+                  Margin="8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="6*" MinWidth="520" />
+                    <ColumnDefinition Width="72*" MinWidth="620" />
                     <ColumnDefinition Width="8" />
-                    <ColumnDefinition Width="5*" MinWidth="500" />
+                    <ColumnDefinition Width="28*" MinWidth="340" />
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0"
@@ -419,7 +562,6 @@
                         Padding="12">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
@@ -433,25 +575,8 @@
                                        Style="{StaticResource SectionTitleStyle}" />
                         </DockPanel>
 
-                        <ListBox Grid.Row="1"
-                                 ItemsSource="{Binding SearchResults}"
-                                 SelectedItem="{Binding SelectedTopic, Mode=TwoWay}"
-                                 Visibility="{Binding SearchResultsVisibility}"
-                                 MaxHeight="160"
-                                 Margin="0,0,0,6"
-                                 BorderBrush="{StaticResource BorderBrushSoft}"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="{x:Type vm:TopicViewModel}">
-                                    <TextBlock Text="{Binding FullTopic}"
-                                               TextTrimming="CharacterEllipsis" />
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-
                         <TreeView x:Name="TopicTree"
-                                  Grid.Row="2"
+                                  Grid.Row="1"
                                   ItemsSource="{Binding RootTopics}"
                                   SelectedItemChanged="TopicTree_SelectedItemChanged"
                                   BorderThickness="0"
@@ -465,7 +590,7 @@
 
                 <GridSplitter Grid.Column="1"
                               HorizontalAlignment="Stretch"
-                              Background="{StaticResource BorderBrushSoft}"
+                              Style="{StaticResource VerticalSplitterStyle}"
                               ResizeDirection="Columns"
                               ResizeBehavior="PreviousAndNext"
                               ShowsPreview="True"
@@ -486,9 +611,9 @@
 
                         <Grid Grid.Row="0">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" MinWidth="220" />
+                                <ColumnDefinition Width="*" MinWidth="145" />
                                 <ColumnDefinition Width="7" />
-                                <ColumnDefinition Width="*" MinWidth="220" />
+                                <ColumnDefinition Width="*" MinWidth="145" />
                             </Grid.ColumnDefinitions>
 
                             <Grid Grid.Column="0">
@@ -517,7 +642,7 @@
 
                             <GridSplitter Grid.Column="1"
                                           HorizontalAlignment="Stretch"
-                                          Background="{StaticResource BorderBrushSoft}"
+                                          Style="{StaticResource VerticalSplitterStyle}"
                                           ResizeDirection="Columns"
                                           ResizeBehavior="PreviousAndNext"
                                           ShowsPreview="True"
@@ -550,7 +675,7 @@
 
                         <GridSplitter Grid.Row="1"
                                       HorizontalAlignment="Stretch"
-                                      Background="{StaticResource BorderBrushSoft}"
+                                      Style="{StaticResource HorizontalSplitterStyle}"
                                       ResizeDirection="Rows"
                                       ResizeBehavior="PreviousAndNext"
                                       ShowsPreview="True"
@@ -562,10 +687,6 @@
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
                             <DockPanel Margin="0,0,0,9">
-                                <Button DockPanel.Dock="Right"
-                                        Content="{Binding HistoryPauseButtonText}"
-                                        Command="{Binding ToggleHistoryPauseCommand}"
-                                        Style="{StaticResource QuietButtonStyle}" />
                                 <TextBlock Text="History"
                                            Style="{StaticResource SectionTitleStyle}" />
                                 <TextBlock Text="{Binding SelectedTopicAveragePeriodText}"
@@ -588,7 +709,7 @@
                                       BorderBrush="{StaticResource BorderBrushSoft}"
                                       RowHeight="28">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Time" Binding="{Binding ReceivedAtWithDeltaText}" Width="290" />
+                                    <DataGridTextColumn Header="Time" Binding="{Binding ReceivedAtWithDeltaText}" Width="230" />
                                     <DataGridTextColumn Header="Payload" Binding="{Binding PayloadPreview}" Width="*" />
                                 </DataGrid.Columns>
                             </DataGrid>
@@ -596,7 +717,7 @@
 
                         <GridSplitter Grid.Row="3"
                                       HorizontalAlignment="Stretch"
-                                      Background="{StaticResource BorderBrushSoft}"
+                                      Style="{StaticResource HorizontalSplitterStyle}"
                                       ResizeDirection="Rows"
                                       ResizeBehavior="PreviousAndNext"
                                       ShowsPreview="True"
@@ -612,9 +733,48 @@
                             <TextBlock Text="Publish"
                                        Style="{StaticResource SectionTitleStyle}"
                                        Margin="0,0,0,9" />
-                            <TextBox Grid.Row="1"
-                                     Text="{Binding PublishTopic, UpdateSourceTrigger=PropertyChanged}"
-                                     Margin="0,0,0,8" />
+                            <Grid Grid.Row="1" Margin="0,0,0,8">
+                                <TextBox x:Name="PublishTopicInput"
+                                         Text="{Binding PublishTopic, UpdateSourceTrigger=PropertyChanged}"
+                                         Padding="9,5,32,5"
+                                         TextChanged="PublishTopicInput_TextChanged"
+                                         GotKeyboardFocus="PublishTopicInput_GotKeyboardFocus"
+                                         PreviewKeyDown="PublishTopicInput_PreviewKeyDown" />
+                                <Button Width="28"
+                                        HorizontalAlignment="Right"
+                                        Content="▼"
+                                        Padding="0"
+                                        Style="{StaticResource QuietButtonStyle}"
+                                        Click="PublishTopicDropButton_Click"
+                                        ToolTip="Show known topics" />
+                                <Popup x:Name="PublishTopicPopup"
+                                       PlacementTarget="{Binding ElementName=PublishTopicInput}"
+                                       DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                       Placement="Bottom"
+                                       StaysOpen="False"
+                                       AllowsTransparency="True"
+                                       PopupAnimation="Fade">
+                                    <Border Width="{Binding ActualWidth, ElementName=PublishTopicInput}"
+                                            MaxHeight="220"
+                                            Background="White"
+                                            BorderBrush="{StaticResource BorderBrushStrong}"
+                                            BorderThickness="1">
+                                        <ListBox x:Name="PublishTopicSuggestionList"
+                                                 ItemsSource="{Binding PublishTopicSuggestions}"
+                                                 PreviewMouseLeftButtonUp="PublishTopicSuggestionList_PreviewMouseLeftButtonUp"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding}"
+                                                               Margin="4,2"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </Border>
+                                </Popup>
+                            </Grid>
                             <TextBox Grid.Row="2"
                                      Text="{Binding PublishPayload, UpdateSourceTrigger=PropertyChanged}"
                                      AcceptsReturn="True"
@@ -626,33 +786,35 @@
                                      HorizontalScrollBarVisibility="Auto"
                                      VerticalContentAlignment="Top"
                                      Background="{StaticResource CodeBackgroundBrush}" />
-                            <Grid Grid.Row="3" Margin="0,10,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="90" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="QoS" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <ComboBox Grid.Column="1"
-                                          ItemsSource="{Binding QosOptions}"
-                                          SelectedItem="{Binding PublishQos}" />
-                                <CheckBox Grid.Column="2"
-                                          Content="retain"
-                                          IsChecked="{Binding PublishRetain}"
-                                          VerticalAlignment="Center"
-                                          Margin="14,0" />
-                                <Button Grid.Column="4"
-                                        Content="Format JSON"
-                                        Command="{Binding FormatPublishJsonCommand}"
-                                        Margin="0,0,8,0" />
-                                <Button Grid.Column="5"
-                                        Content="Publish"
-                                        Command="{Binding PublishCommand}"
-                                        Style="{StaticResource PrimaryButtonStyle}"
-                                        MinWidth="100" />
+                            <Grid Grid.Row="3" Margin="0,8,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="QoS"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0" />
+                                    <ComboBox Width="72"
+                                              ItemsSource="{Binding QosOptions}"
+                                              SelectedItem="{Binding PublishQos}" />
+                                    <CheckBox Content="retain"
+                                              IsChecked="{Binding PublishRetain}"
+                                              VerticalAlignment="Center"
+                                              Margin="14,0" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="1"
+                                            Orientation="Horizontal"
+                                            HorizontalAlignment="Right"
+                                            Margin="0,6,0,0">
+                                    <Button Content="Format JSON"
+                                            Command="{Binding FormatPublishJsonCommand}"
+                                            Margin="0,0,8,0" />
+                                    <Button Content="Publish"
+                                            Command="{Binding PublishCommand}"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            MinWidth="100" />
+                                </StackPanel>
                             </Grid>
                         </Grid>
                     </Grid>

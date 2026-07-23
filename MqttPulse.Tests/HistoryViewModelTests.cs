@@ -68,6 +68,19 @@ public sealed class HistoryViewModelTests
         Assert.AreEqual("Avg 15 ms", viewModel.SelectedTopicAveragePeriodText);
     }
 
+    [TestMethod]
+    public void PauseCommandUsesEnglishLabelAndFreezesTheCombinedDetailView()
+    {
+        using var viewModel = new MainViewModel();
+
+        Assert.AreEqual("Pause", viewModel.HistoryPauseButtonText);
+
+        viewModel.ToggleHistoryPauseCommand.Execute(null);
+
+        Assert.IsTrue(viewModel.HistoryPaused);
+        Assert.AreEqual("Resume", viewModel.HistoryPauseButtonText);
+    }
+
     private static MqttMessageSnapshot Message(string topic, string payload, string receivedAt) =>
         new(topic, payload, DateTimeOffset.Parse(receivedAt), Qos: 0, Retain: false);
 }

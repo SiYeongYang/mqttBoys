@@ -9,6 +9,9 @@ public sealed class TopicViewModel : ObservableObject
     private readonly Dictionary<string, TopicViewModel> _childrenByName = new(StringComparer.Ordinal);
     private readonly BoundedMessageHistory _history;
     private bool _isExpanded;
+    private bool _isSearchVisible = true;
+    private bool _searchStateCaptured;
+    private bool _expandedBeforeSearch;
     private int _leafTopicCount;
     private int _messageCount;
     private string _lastPayloadPreview = string.Empty;
@@ -32,23 +35,17 @@ public sealed class TopicViewModel : ObservableObject
         set => SetProperty(ref _isExpanded, value);
     }
 
-    public int LeafTopicCount
+    public bool IsSearchVisible
     {
-        get => _leafTopicCount;
-        private set => SetProperty(ref _leafTopicCount, value);
+        get => _isSearchVisible;
+        private set => SetProperty(ref _isSearchVisible, value);
     }
 
-    public int MessageCount
-    {
-        get => _messageCount;
-        private set => SetProperty(ref _messageCount, value);
-    }
+    public int LeafTopicCount => _leafTopicCount;
 
-    public string LastPayloadPreview
-    {
-        get => _lastPayloadPreview;
-        private set => SetProperty(ref _lastPayloadPreview, value);
-    }
+    public int MessageCount => _messageCount;
+
+    public string LastPayloadPreview => _lastPayloadPreview;
 
     public bool IsLeafTopic { get; private set; }
 
@@ -73,24 +70,71 @@ public sealed class TopicViewModel : ObservableObject
         return created;
     }
 
-    public void Record(MqttMessageSnapshot message, bool isLeaf, bool leafTopicWasNew)
+    public void Record(MqttMessageSnapshot message, bool isLeaf, bool leafTopicWasNew, bool notify = true)
     {
-        MessageCount++;
+        _messageCount++;
         LastMessage = message;
         if (leafTopicWasNew)
         {
-            LeafTopicCount++;
+            _leafTopicCount++;
         }
 
         if (isLeaf)
         {
             IsLeafTopic = true;
-            LastPayloadPreview = PayloadFormatter.BuildPreview(message.PayloadText, previewLimit: 120);
             _history.Add(message);
         }
 
+        if (notify)
+        {
+            NotifyRecordChanged();
+        }
+    }
+
+    public void NotifyRecordChanged()
+    {
+        if (IsLeafTopic && LastMessage is not null)
+        {
+            _lastPayloadPreview = PayloadFormatter.BuildPreview(LastMessage.PayloadText, previewLimit: 120);
+        }
+
+        OnPropertyChanged(nameof(LeafTopicCount));
+        OnPropertyChanged(nameof(MessageCount));
+        OnPropertyChanged(nameof(LastPayloadPreview));
         OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(DetailText));
+    }
+
+    public bool ApplySearch(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            RestoreSearchState();
+            return true;
+        }
+
+        if (!_searchStateCaptured)
+        {
+            _expandedBeforeSearch = IsExpanded;
+            _searchStateCaptured = true;
+        }
+
+        var normalizedQuery = query.Trim();
+        var isDirectMatch = Name.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)
+                            || FullTopic.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase);
+        var hasVisibleChild = false;
+        foreach (var child in Children)
+        {
+            hasVisibleChild |= child.ApplySearch(normalizedQuery);
+        }
+
+        IsSearchVisible = isDirectMatch || hasVisibleChild;
+        if (hasVisibleChild)
+        {
+            IsExpanded = true;
+        }
+
+        return IsSearchVisible;
     }
 
     public IReadOnlyList<MqttMessageSnapshot> HistoryNewestFirst()
@@ -101,6 +145,21 @@ public sealed class TopicViewModel : ObservableObject
     public IReadOnlyList<MqttMessageSnapshot> HistoryNewestFirst(int maxCount)
     {
         return _history.NewestFirst(maxCount);
+    }
+
+    private void RestoreSearchState()
+    {
+        IsSearchVisible = true;
+        if (_searchStateCaptured)
+        {
+            IsExpanded = _expandedBeforeSearch;
+            _searchStateCaptured = false;
+        }
+
+        foreach (var child in Children)
+        {
+            child.RestoreSearchState();
+        }
     }
 
     private static string Pluralize(string word, int count) => count == 1 ? word : word + "s";

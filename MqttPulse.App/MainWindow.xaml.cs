@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     private readonly MainViewModel _viewModel;
     private Point _profileTreeDragStart;
     private bool _isCommittingPeriodTopicSuggestion;
+    private bool _isCommittingPublishTopicSuggestion;
 
     public MainWindow()
     {
@@ -38,6 +39,143 @@ public partial class MainWindow : Window
         {
             _viewModel.SelectedTopic = topic;
         }
+    }
+
+    private void ToolsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { ContextMenu: { } menu } button)
+        {
+            menu.PlacementTarget = button;
+            menu.IsOpen = true;
+        }
+    }
+
+    private void PublishTopicInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isCommittingPublishTopicSuggestion)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.DataBind,
+            new Action(() => ShowPublishTopicSuggestions(resetSelection: true)));
+    }
+
+    private void PublishTopicInput_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        ShowPublishTopicSuggestions(resetSelection: true);
+    }
+
+    private void PublishTopicDropButton_Click(object sender, RoutedEventArgs e)
+    {
+        PublishTopicInput.Focus();
+        PublishTopicInput.CaretIndex = PublishTopicInput.Text.Length;
+        PublishTopicInput.SelectionLength = 0;
+        ShowPublishTopicSuggestions(resetSelection: true);
+    }
+
+    private void PublishTopicInput_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Down:
+                MovePublishTopicSuggestion(1);
+                e.Handled = true;
+                break;
+            case Key.Up:
+                MovePublishTopicSuggestion(-1);
+                e.Handled = true;
+                break;
+            case Key.Enter when PublishTopicPopup.IsOpen
+                                && PublishTopicSuggestionList.SelectedItem is string topic:
+                CommitPublishTopicSuggestion(topic);
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                ClosePublishTopicSuggestions();
+                e.Handled = true;
+                break;
+            case Key.Tab:
+                ClosePublishTopicSuggestions();
+                break;
+        }
+    }
+
+    private void PublishTopicSuggestionList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBox list
+            || ItemsControl.ContainerFromElement(list, e.OriginalSource as DependencyObject) is not ListBoxItem item
+            || item.DataContext is not string topic)
+        {
+            return;
+        }
+
+        CommitPublishTopicSuggestion(topic);
+        e.Handled = true;
+    }
+
+    private void MovePublishTopicSuggestion(int offset)
+    {
+        var count = PublishTopicSuggestionList.Items.Count;
+        if (count == 0)
+        {
+            ClosePublishTopicSuggestions();
+            return;
+        }
+
+        PublishTopicPopup.IsOpen = true;
+        var current = PublishTopicSuggestionList.SelectedIndex;
+        var next = current < 0
+            ? (offset > 0 ? 0 : count - 1)
+            : Math.Clamp(current + offset, 0, count - 1);
+        PublishTopicSuggestionList.SelectedIndex = next;
+        PublishTopicSuggestionList.ScrollIntoView(PublishTopicSuggestionList.SelectedItem);
+    }
+
+    private void ShowPublishTopicSuggestions(bool resetSelection)
+    {
+        if (!PublishTopicInput.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        if (resetSelection)
+        {
+            PublishTopicSuggestionList.SelectedIndex = -1;
+        }
+
+        PublishTopicPopup.IsOpen = _viewModel.PublishTopicSuggestions.Count > 0;
+    }
+
+    private void CommitPublishTopicSuggestion(string topic)
+    {
+        _isCommittingPublishTopicSuggestion = true;
+        try
+        {
+            PublishTopicPopup.IsOpen = false;
+            PublishTopicSuggestionList.SelectedIndex = -1;
+            _viewModel.PublishTopic = topic;
+        }
+        finally
+        {
+            _isCommittingPublishTopicSuggestion = false;
+        }
+
+        Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Input,
+            new Action(() =>
+            {
+                PublishTopicInput.Focus();
+                PublishTopicInput.CaretIndex = PublishTopicInput.Text.Length;
+                PublishTopicInput.SelectionLength = 0;
+            }));
+    }
+
+    private void ClosePublishTopicSuggestions()
+    {
+        PublishTopicPopup.IsOpen = false;
+        PublishTopicSuggestionList.SelectedIndex = -1;
     }
 
     private void PeriodTopicInput_TextChanged(object sender, TextChangedEventArgs e)

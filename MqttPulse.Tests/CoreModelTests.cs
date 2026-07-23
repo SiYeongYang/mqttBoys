@@ -111,6 +111,25 @@ public sealed class CoreModelTests
     }
 
     [TestMethod]
+    public void BoundedMessageHistoryUsesPayloadBudgetButKeepsFiveLargeMessages()
+    {
+        var history = new BoundedMessageHistory(
+            capacity: 20,
+            maxPayloadCharacters: 30,
+            minimumRetainedCount: 5);
+
+        for (var i = 0; i < 10; i++)
+        {
+            history.Add(Message("topic", new string((char)('a' + i), 10)));
+        }
+
+        Assert.AreEqual(5, history.Count);
+        Assert.AreEqual(50, history.PayloadCharacters);
+        Assert.AreEqual(new string('j', 10), history.NewestFirst()[0].PayloadText);
+        Assert.AreEqual(new string('f', 10), history.NewestFirst()[4].PayloadText);
+    }
+
+    [TestMethod]
     public void MessagePeriodStatisticsCalculatesAverageMinMaxAndDuration()
     {
         var started = DateTimeOffset.Parse("2026-06-18T21:06:00.000+09:00");

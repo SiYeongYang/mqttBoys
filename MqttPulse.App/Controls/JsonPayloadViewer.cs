@@ -9,7 +9,7 @@ namespace MqttPulse.App.Controls;
 
 public sealed class JsonPayloadViewer : RichTextBox
 {
-    private const int HighlightLimit = 250_000;
+    private const int HighlightLimit = 64_000;
     private static readonly Brush TextBrush = Frozen("#17211F");
     private static readonly Brush KeyBrush = Frozen("#0A5C9C");
     private static readonly Brush StringBrush = Frozen("#167245");
@@ -28,6 +28,8 @@ public sealed class JsonPayloadViewer : RichTextBox
     {
         IsReadOnly = true;
         IsDocumentEnabled = false;
+        IsUndoEnabled = false;
+        UndoLimit = 0;
         BorderThickness = new Thickness(1);
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;

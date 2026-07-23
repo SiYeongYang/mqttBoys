@@ -14,8 +14,11 @@ namespace MqttPulse.App.ViewModels;
 public sealed class MainViewModel : ObservableObject, IDisposable
 {
     private const int MaxMessagesPerUiTick = 5_000;
-    private const int HistoryDisplayLimit = 1_000;
-    private static readonly long DetailRefreshMinTicks = Stopwatch.Frequency / 4;
+    private const int MaxPendingMessages = 10_000;
+    private const long MaxPendingPayloadCharacters = 16_000_000;
+    private const int HistoryDisplayLimit = 300;
+    private static readonly long ValueRefreshMinTicks = Stopwatch.Frequency / 10;
+    private static readonly long HistoryRefreshMinTicks = Stopwatch.Frequency / 2;
     private const int SearchResultLimit = 500;
     private const int MinPeriodCheckSeconds = 1;
     private const int MaxPeriodCheckSeconds = 3_600;
@@ -64,8 +67,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string _periodCheckTargetTopic = string.Empty;
     private long _receivedMessages;
     private int _pendingQueueCount;
+    private long _pendingPayloadCharacters;
     private int _pendingCount;
-    private long _lastDetailRefreshTimestamp;
+    private long _lastValueRefreshTimestamp;
+    private long _lastHistoryRefreshTimestamp;
 
     public MainViewModel(ProfileStore? profileStore = null)
     {
@@ -85,6 +90,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ConnectCommand = new AsyncRelayCommand(ConnectAsync, () => !IsBusy && !IsConnected && SelectedProfile is not null);
         ConnectSelectedProfileCommand = new AsyncRelayCommand(ConnectAsync, () => !IsBusy && SelectedProfile is not null);
         DisconnectCommand = new AsyncRelayCommand(DisconnectAsync, () => !IsBusy && IsConnected);
+        ToggleConnectionCommand = new AsyncRelayCommand(
+            ToggleConnectionAsync,
+            () => !IsBusy && (IsConnected || SelectedProfile is not null));
         PublishCommand = new AsyncRelayCommand(PublishAsync, () => IsConnected && !string.IsNullOrWhiteSpace(PublishTopic));
         FormatPublishJsonCommand = new RelayCommand(FormatPublishJson);
         CopyValueCommand = new RelayCommand(CopyValueToClipboard, () => !string.IsNullOrEmpty(ValuePayloadText));
@@ -116,7 +124,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         _flushTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromMilliseconds(150)
+            Interval = TimeSpan.FromMilliseconds(100)
         };
         _flushTimer.Tick += (_, _) => DrainPendingMessages();
         _flushTimer.Start();
@@ -130,11 +138,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<TopicViewModel> RootTopics { get; } = new();
 
-    public ObservableCollection<TopicViewModel> SearchResults { get; } = new();
-
     public ObservableCollection<HistoryItemViewModel> SelectedTopicHistory { get; } = new();
 
     public ObservableCollection<string> PeriodCheckTopicSuggestions { get; } = new();
+
+    public ObservableCollection<string> PublishTopicSuggestions { get; } = new();
 
     public ObservableCollection<PeriodCheckHistoryItemViewModel> PeriodCheckHistory { get; } = new();
 
@@ -151,6 +159,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public AsyncRelayCommand ConnectSelectedProfileCommand { get; }
 
     public AsyncRelayCommand DisconnectCommand { get; }
+
+    public AsyncRelayCommand ToggleConnectionCommand { get; }
 
     public AsyncRelayCommand PublishCommand { get; }
 
@@ -266,7 +276,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 SelectedHistoryItem = null;
                 PublishTopic = value?.FullTopic ?? string.Empty;
-                _lastDetailRefreshTimestamp = 0;
+                _lastValueRefreshTimestamp = 0;
+                _lastHistoryRefreshTimestamp = 0;
                 RefreshSelectedTopic(keepCurrentSelection: false);
             }
         }
@@ -296,15 +307,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _searchText, value))
             {
-                OnPropertyChanged(nameof(SearchResultsVisibility));
-                UpdateSearchResults();
+                ApplyTopicFilter();
             }
         }
     }
-
-    public Visibility SearchResultsVisibility => string.IsNullOrWhiteSpace(SearchText)
-        ? Visibility.Collapsed
-        : Visibility.Visible;
 
     public string SelectedFolderPath
     {
@@ -444,6 +450,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _publishTopic, value))
             {
+                RefreshPublishTopicSuggestions();
                 PublishCommand.RaiseCanExecuteChanged();
             }
         }
@@ -475,10 +482,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _isConnected, value))
             {
                 OnPropertyChanged(nameof(SelectedProfileCaption));
+                OnPropertyChanged(nameof(ConnectionButtonText));
                 RaiseCommandStates();
             }
         }
     }
+
+    public string ConnectionButtonText => IsConnected ? "Disconnect" : "Connect";
 
     public bool IsBusy
     {
@@ -610,7 +620,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string HistoryPauseButtonText => HistoryPaused ? "계속" : "일시정지";
+    public string HistoryPauseButtonText => HistoryPaused ? "Resume" : "Pause";
 
     public bool FreezeDetail
     {
@@ -784,6 +794,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
         }
+    }
+
+    private Task ToggleConnectionAsync()
+    {
+        return IsConnected ? DisconnectAsync() : ConnectAsync();
     }
 
     private async Task DisconnectAsync()
@@ -1305,10 +1320,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _rootTopicsByName.Clear();
         _leafTopicsByFullName.Clear();
         PeriodCheckTopicSuggestions.Clear();
+        PublishTopicSuggestions.Clear();
         PeriodCheckTopicText = string.Empty;
         _brokerTopicRoot = null;
         RootTopics.Clear();
-        SearchResults.Clear();
         SelectedTopicHistory.Clear();
         SelectedTopic = null;
         ValuePayloadText = string.Empty;
@@ -1333,6 +1348,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         _pendingMessages.Enqueue(message);
         Interlocked.Increment(ref _pendingQueueCount);
+        Interlocked.Add(ref _pendingPayloadCharacters, message.PayloadLength);
+        TrimPendingMessages();
     }
 
     private void OnStatusChanged(string status)
@@ -1354,52 +1371,77 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var selectedTopicWasTouched = false;
         var searchNeedsRefresh = false;
         var processed = 0;
+        var changedTopics = new HashSet<TopicViewModel>();
 
         // Batch UI updates so fast brokers do not cause one layout pass per MQTT packet.
         while (processed < MaxMessagesPerUiTick && _pendingMessages.TryDequeue(out var message))
         {
             Interlocked.Decrement(ref _pendingQueueCount);
-            var leafTopic = IngestIntoTree(message, out var leafTopicWasNew);
+            Interlocked.Add(ref _pendingPayloadCharacters, -message.PayloadLength);
+            var leafTopic = IngestIntoTree(message, changedTopics, out var leafTopicWasNew);
             selectedTopicWasTouched |= ReferenceEquals(leafTopic, SelectedTopic);
             searchNeedsRefresh |= leafTopicWasNew;
             processed++;
+        }
+
+        foreach (var topic in changedTopics)
+        {
+            topic.NotifyRecordChanged();
         }
 
         ReceivedMessages += processed;
         PendingCount = Math.Max(0, Volatile.Read(ref _pendingQueueCount));
         OnPropertyChanged(nameof(TopicCount));
 
-        if (!FreezeDetail && selectedTopicWasTouched && ShouldRefreshSelectedTopicDetail())
+        if (!FreezeDetail && !HistoryPaused && selectedTopicWasTouched)
         {
-            if (HistoryPaused)
+            if (ShouldRefreshValue())
             {
                 RefreshSelectedTopicValue();
             }
-            else
+
+            if (ShouldRefreshHistory())
             {
-                RefreshSelectedTopic(keepCurrentSelection: true);
+                RefreshSelectedTopicHistory(keepCurrentSelection: true);
             }
         }
 
-        if (searchNeedsRefresh && !string.IsNullOrWhiteSpace(SearchText))
+        if (searchNeedsRefresh)
         {
-            UpdateSearchResults();
+            ApplyTopicFilter();
+            RefreshPublishTopicSuggestions();
+            RefreshPeriodCheckTopicSuggestions();
         }
     }
 
-    private bool ShouldRefreshSelectedTopicDetail()
+    private bool ShouldRefreshValue()
     {
         var now = Stopwatch.GetTimestamp();
-        if (now - _lastDetailRefreshTimestamp < DetailRefreshMinTicks)
+        if (now - _lastValueRefreshTimestamp < ValueRefreshMinTicks)
         {
             return false;
         }
 
-        _lastDetailRefreshTimestamp = now;
+        _lastValueRefreshTimestamp = now;
         return true;
     }
 
-    private TopicViewModel IngestIntoTree(MqttMessageSnapshot message, out bool leafTopicWasNew)
+    private bool ShouldRefreshHistory()
+    {
+        var now = Stopwatch.GetTimestamp();
+        if (now - _lastHistoryRefreshTimestamp < HistoryRefreshMinTicks)
+        {
+            return false;
+        }
+
+        _lastHistoryRefreshTimestamp = now;
+        return true;
+    }
+
+    private TopicViewModel IngestIntoTree(
+        MqttMessageSnapshot message,
+        ISet<TopicViewModel> changedTopics,
+        out bool leafTopicWasNew)
     {
         var activeProfile = _connectedProfile ?? SelectedProfile;
         var segments = message.Topic.Split('/', StringSplitOptions.None);
@@ -1407,7 +1449,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var path = string.Empty;
         leafTopicWasNew = !_leafTopicsByFullName.ContainsKey(message.Topic);
 
-        current.Record(message, isLeaf: false, leafTopicWasNew);
+        current.Record(message, isLeaf: false, leafTopicWasNew, notify: false);
+        changedTopics.Add(current);
 
         for (var i = 0; i < segments.Length; i++)
         {
@@ -1416,7 +1459,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             var isLeaf = i == segments.Length - 1;
 
             current = current.GetOrCreateChild(segment, path, activeProfile?.MaxHistoryPerTopic ?? 300);
-            current.Record(message, isLeaf, leafTopicWasNew);
+            current.Record(message, isLeaf, leafTopicWasNew, notify: false);
+            changedTopics.Add(current);
 
             if (isLeaf)
             {
@@ -1448,20 +1492,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return _brokerTopicRoot;
     }
 
-    private void UpdateSearchResults()
+    private void ApplyTopicFilter()
     {
-        SearchResults.Clear();
-        if (string.IsNullOrWhiteSpace(SearchText))
+        foreach (var root in RootTopics)
         {
-            return;
+            root.ApplySearch(SearchText);
         }
+    }
 
-        foreach (var match in _leafTopicsByFullName.Values
-                     .Where(x => x.FullTopic.Contains(SearchText, StringComparison.OrdinalIgnoreCase))
-                     .OrderBy(x => x.FullTopic, StringComparer.OrdinalIgnoreCase)
-                     .Take(SearchResultLimit))
+    private void RefreshPublishTopicSuggestions()
+    {
+        var query = PublishTopic.Trim();
+        var matches = _leafTopicsByFullName.Keys
+            .Where(x => query.Length == 0 || x.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(x => query.Length > 0 && x.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .Take(SearchResultLimit)
+            .ToArray();
+
+        PublishTopicSuggestions.Clear();
+        foreach (var topic in matches)
         {
-            SearchResults.Add(match);
+            PublishTopicSuggestions.Add(topic);
         }
     }
 
@@ -1591,6 +1643,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void RefreshSelectedTopic(bool keepCurrentSelection)
     {
+        RefreshSelectedTopicHistory(keepCurrentSelection);
+        RefreshSelectedTopicValue();
+    }
+
+    private void RefreshSelectedTopicHistory(bool keepCurrentSelection)
+    {
         var previousSelectedMessage = keepCurrentSelection ? SelectedHistoryItem?.Message : null;
         SelectedTopicHistory.Clear();
 
@@ -1612,15 +1670,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         SelectedTopicAveragePeriodText = FormatAveragePeriod(history);
-
-        if (SelectedTopic.LastMessage is not null)
-        {
-            ShowValuePayload(SelectedTopic.LastMessage);
-        }
-        else
-        {
-            ValuePayloadText = string.Empty;
-        }
 
         if (previousSelectedMessage is not null)
         {
@@ -1649,23 +1698,44 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (SelectedTopic?.LastMessage is { } message)
         {
             ShowValuePayload(message);
+            return;
         }
+
+        ValuePayloadText = string.Empty;
     }
 
     private void ClearPendingMessages()
     {
         var removed = 0;
-        while (_pendingMessages.TryDequeue(out _))
+        long removedPayloadCharacters = 0;
+        while (_pendingMessages.TryDequeue(out var message))
         {
             removed++;
+            removedPayloadCharacters += message.PayloadLength;
         }
 
         if (removed > 0)
         {
             Interlocked.Add(ref _pendingQueueCount, -removed);
+            Interlocked.Add(ref _pendingPayloadCharacters, -removedPayloadCharacters);
         }
 
         PendingCount = Math.Max(0, Volatile.Read(ref _pendingQueueCount));
+    }
+
+    private void TrimPendingMessages()
+    {
+        while (Volatile.Read(ref _pendingQueueCount) > MaxPendingMessages
+               || Volatile.Read(ref _pendingPayloadCharacters) > MaxPendingPayloadCharacters)
+        {
+            if (!_pendingMessages.TryDequeue(out var dropped))
+            {
+                return;
+            }
+
+            Interlocked.Decrement(ref _pendingQueueCount);
+            Interlocked.Add(ref _pendingPayloadCharacters, -dropped.PayloadLength);
+        }
     }
 
     private void ClearPeriodCheckSamples()
@@ -1804,6 +1874,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ConnectCommand.RaiseCanExecuteChanged();
         ConnectSelectedProfileCommand.RaiseCanExecuteChanged();
         DisconnectCommand.RaiseCanExecuteChanged();
+        ToggleConnectionCommand.RaiseCanExecuteChanged();
         OpenConnectionManagerCommand.RaiseCanExecuteChanged();
         PublishCommand.RaiseCanExecuteChanged();
         OpenPeriodCheckCommand.RaiseCanExecuteChanged();

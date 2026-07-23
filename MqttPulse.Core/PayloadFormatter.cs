@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text;
 
 namespace MqttPulse.Core;
 
@@ -48,18 +49,40 @@ public static class PayloadFormatter
             throw new ArgumentOutOfRangeException(nameof(previewLimit), "Preview limit must be greater than zero.");
         }
 
-        var collapsed = string.Join(' ', payload.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        if (collapsed.Length <= previewLimit)
+        var preview = new StringBuilder(Math.Min(payload.Length, previewLimit + 1));
+        var pendingSpace = false;
+        foreach (var value in payload)
         {
-            return collapsed;
+            if (char.IsWhiteSpace(value))
+            {
+                pendingSpace = preview.Length > 0;
+                continue;
+            }
+
+            if (pendingSpace)
+            {
+                preview.Append(' ');
+                pendingSpace = false;
+            }
+
+            preview.Append(value);
+            if (preview.Length > previewLimit)
+            {
+                break;
+            }
+        }
+
+        if (preview.Length <= previewLimit)
+        {
+            return preview.ToString();
         }
 
         if (previewLimit <= 3)
         {
-            return collapsed[..previewLimit];
+            return preview.ToString(0, previewLimit);
         }
 
-        return collapsed[..(previewLimit - 3)] + "...";
+        return preview.ToString(0, previewLimit - 3) + "...";
     }
 
     private static bool TryFormatJson(string payload, out string? formatted)
