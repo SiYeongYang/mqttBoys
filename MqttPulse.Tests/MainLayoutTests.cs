@@ -1,10 +1,11 @@
-using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Threading;
 using MqttPulse.App;
+using MqttPulse.App.Controls;
 using MqttPulse.App.Models;
 using MqttPulse.App.ViewModels;
 using MqttPulse.Core;
@@ -128,7 +129,7 @@ public sealed class MainLayoutTests
             var valuePanel = (Grid)window.FindName("ValuePanel");
             var pause = (Button)window.FindName("ValuePauseButton");
             var chart = (Button)window.FindName("ValueChartButton");
-            var chartFlyout = (Border)window.FindName("ValueChartFlyout");
+            var valueViewer = (JsonPayloadViewer)window.FindName("ValuePayloadViewer");
             var formatter = (Grid)window.FindName("JsonFormatterPanel");
             var detail = (Grid)window.FindName("MainDetailGrid");
             var publishPayload = (TextBox)window.FindName("PublishPayloadInput");
@@ -139,7 +140,7 @@ public sealed class MainLayoutTests
             Assert.IsTrue(chart.IsDescendantOf(valuePanel));
             Assert.IsTrue(pause.IsDescendantOf(valuePanel));
             Assert.IsFalse(pause.IsDescendantOf(header));
-            Assert.AreEqual(Visibility.Collapsed, chartFlyout.Visibility);
+            Assert.IsTrue(valueViewer.EnableChartActions);
             Assert.AreEqual(Visibility.Collapsed, formatter.Visibility);
             Assert.AreEqual(170, detail.RowDefinitions[2].ActualHeight, 0.5);
             Assert.IsGreaterThan(100, publishPayload.ActualHeight);
@@ -174,49 +175,22 @@ public sealed class MainLayoutTests
     }
 
     [TestMethod]
-    public void ValueChartOpensOnDemandAndBuildsNumericHistory()
+    public void ValueViewerExposesChartActionsBesideNumericAndBooleanRows()
     {
         RunInWindow(window =>
         {
-            window.Width = 1100;
-            window.Height = 720;
-            window.UpdateLayout();
-            var viewModel = (MainViewModel)window.DataContext;
-            var chartFlyout = (Border)window.FindName("ValueChartFlyout");
-            var topic = new TopicViewModel("device", "Edge/data/device", historyCapacity: 10);
-            for (var index = 0; index < 3; index++)
-            {
-                topic.Record(
-                    new MqttMessageSnapshot(
-                        topic.FullTopic,
-                        $"{{\"value\":{index},\"running\":{(index % 2 == 0 ? "true" : "false")}}}",
-                        DateTimeOffset.Parse("2026-07-23T19:30:00+09:00").AddMilliseconds(index),
-                        Qos: 0,
-                        Retain: false),
-                    isLeaf: true,
-                    leafTopicWasNew: index == 0);
-            }
+            var viewer = (JsonPayloadViewer)window.FindName("ValuePayloadViewer");
+            viewer.Text = "{\"value\":42,\"running\":true,\"label\":\"line\"}";
+            viewer.UpdateLayout();
 
-            viewModel.SelectedTopic = topic;
-            viewModel.OpenValueChartCommand.Execute(null);
+            var paragraph = viewer.Document.Blocks.OfType<Paragraph>().Single();
+            var actions = paragraph.Inlines.OfType<Hyperlink>().ToArray();
+            var metrics = actions.Select(action => (JsonScalarMetric)action.Tag).ToArray();
 
-            var timeout = Stopwatch.StartNew();
-            while (viewModel.ValueChartMetrics.Count == 0
-                   && timeout.Elapsed < TimeSpan.FromSeconds(3))
-            {
-                Thread.Sleep(10);
-                window.Dispatcher.Invoke(() => { }, DispatcherPriority.DataBind);
-            }
-
-            Assert.AreEqual(Visibility.Visible, viewModel.ValueChartVisibility);
-            Assert.IsGreaterThanOrEqualTo(2, viewModel.ValueChartMetrics.Count);
-            Assert.HasCount(3, viewModel.ValueChartValues);
-            Assert.IsLessThanOrEqualTo(window.ActualWidth, chartFlyout.ActualWidth);
-            Assert.IsLessThanOrEqualTo(window.ActualHeight, chartFlyout.ActualHeight);
-
-            viewModel.CloseValueChartCommand.Execute(null);
-
-            Assert.AreEqual(Visibility.Collapsed, viewModel.ValueChartVisibility);
+            Assert.HasCount(2, actions);
+            CollectionAssert.AreEquivalent(
+                new[] { "$.value", "$.running" },
+                metrics.Select(metric => metric.DisplayPath).ToArray());
         });
     }
 
@@ -228,12 +202,16 @@ public sealed class MainLayoutTests
             window.Width = 1100;
             window.Height = 720;
             var viewModel = (MainViewModel)window.DataContext;
+            viewModel.JsonFormatterInput = "{\"array\":[1,2],\"active\":true}";
             viewModel.OpenJsonFormatterCommand.Execute(null);
+            viewModel.FormatJsonFormatterCommand.Execute(null);
             window.UpdateLayout();
 
             var dialog = (Grid)window.FindName("JsonFormatterDialog");
+            var structure = (TreeView)window.FindName("JsonStructureTree");
 
             Assert.AreEqual(Visibility.Visible, viewModel.JsonFormatterVisibility);
+            Assert.HasCount(1, structure.Items);
             Assert.IsLessThanOrEqualTo(window.ActualWidth, dialog.ActualWidth);
             Assert.IsLessThanOrEqualTo(window.ActualHeight, dialog.ActualHeight);
         });

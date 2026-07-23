@@ -4,18 +4,21 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using MqttPulse.Core;
 
 namespace MqttPulse.App.Controls;
 
 public sealed class JsonPayloadViewer : RichTextBox
 {
     private const int HighlightLimit = 64_000;
+    private const int InteractiveLimit = 256_000;
     private static readonly Brush TextBrush = Frozen("#17211F");
     private static readonly Brush KeyBrush = Frozen("#0A5C9C");
     private static readonly Brush StringBrush = Frozen("#167245");
     private static readonly Brush NumberBrush = Frozen("#8A4A00");
     private static readonly Brush LiteralBrush = Frozen("#8B2F75");
     private static readonly Brush PunctuationBrush = Frozen("#65716E");
+    private static readonly Brush ChartActionBrush = Frozen("#176E63");
     private bool _rendering;
 
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
@@ -23,6 +26,12 @@ public sealed class JsonPayloadViewer : RichTextBox
         typeof(string),
         typeof(JsonPayloadViewer),
         new FrameworkPropertyMetadata(string.Empty, OnTextChanged));
+
+    public static readonly DependencyProperty EnableChartActionsProperty = DependencyProperty.Register(
+        nameof(EnableChartActions),
+        typeof(bool),
+        typeof(JsonPayloadViewer),
+        new FrameworkPropertyMetadata(false, OnEnableChartActionsChanged));
 
     public JsonPayloadViewer()
     {
@@ -41,6 +50,14 @@ public sealed class JsonPayloadViewer : RichTextBox
         get => (string)GetValue(TextProperty);
         set => SetValue(TextProperty, value);
     }
+
+    public bool EnableChartActions
+    {
+        get => (bool)GetValue(EnableChartActionsProperty);
+        set => SetValue(EnableChartActionsProperty, value);
+    }
+
+    public event EventHandler<JsonChartRequestedEventArgs>? ChartRequested;
 
     protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
     {
@@ -84,6 +101,19 @@ public sealed class JsonPayloadViewer : RichTextBox
         {
             viewer.Render((string?)e.NewValue ?? string.Empty);
         }
+    }
+
+    private static void OnEnableChartActionsChanged(
+        DependencyObject d,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not JsonPayloadViewer viewer)
+        {
+            return;
+        }
+
+        viewer.IsDocumentEnabled = (bool)e.NewValue;
+        viewer.Render(viewer.Text);
     }
 
     private void Render(string text)
@@ -148,6 +178,13 @@ public sealed class JsonPayloadViewer : RichTextBox
 
     private Paragraph CreateParagraph(string text)
     {
+        if (EnableChartActions
+            && text.Length <= InteractiveLimit
+            && JsonDisplayFormatter.TryBuild(text, out var lines))
+        {
+            return CreateInteractiveParagraph(lines);
+        }
+
         var paragraph = new Paragraph
         {
             Margin = new Thickness(0),
@@ -165,6 +202,57 @@ public sealed class JsonPayloadViewer : RichTextBox
         }
 
         return paragraph;
+    }
+
+    private Paragraph CreateInteractiveParagraph(IReadOnlyList<JsonDisplayLine> lines)
+    {
+        var paragraph = new Paragraph
+        {
+            Margin = new Thickness(0),
+            FontFamily = FontFamily,
+            FontSize = FontSize
+        };
+
+        for (var index = 0; index < lines.Count; index++)
+        {
+            var line = lines[index];
+            if (line.Metric is { } metric)
+            {
+                var action = new Hyperlink(new Run("↗"))
+                {
+                    Tag = metric,
+                    ToolTip = $"Add {metric.DisplayPath} to Charts",
+                    Cursor = Cursors.Hand,
+                    Foreground = ChartActionBrush,
+                    FontWeight = FontWeights.SemiBold,
+                    TextDecorations = null
+                };
+                action.Click += ChartAction_Click;
+                paragraph.Inlines.Add(action);
+                paragraph.Inlines.Add(new Run(" "));
+            }
+            else
+            {
+                paragraph.Inlines.Add(new Run("  "));
+            }
+
+            AddJsonRuns(paragraph, line.Text);
+            if (index < lines.Count - 1)
+            {
+                paragraph.Inlines.Add(new LineBreak());
+            }
+        }
+
+        return paragraph;
+    }
+
+    private void ChartAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Hyperlink { Tag: JsonScalarMetric metric })
+        {
+            ChartRequested?.Invoke(this, new JsonChartRequestedEventArgs(metric));
+            e.Handled = true;
+        }
     }
 
     private static void AddJsonRuns(Paragraph paragraph, string text)
@@ -304,4 +392,9 @@ public sealed class JsonPayloadViewer : RichTextBox
         brush.Freeze();
         return brush;
     }
+}
+
+public sealed class JsonChartRequestedEventArgs(JsonScalarMetric metric) : EventArgs
+{
+    public JsonScalarMetric Metric { get; } = metric;
 }

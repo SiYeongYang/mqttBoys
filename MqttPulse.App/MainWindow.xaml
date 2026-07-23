@@ -440,6 +440,27 @@
             </Grid>
         </HierarchicalDataTemplate>
 
+        <HierarchicalDataTemplate DataType="{x:Type vm:JsonTreeNodeViewModel}"
+                                  ItemsSource="{Binding Children}">
+            <StackPanel Orientation="Horizontal"
+                        MinHeight="22">
+                <TextBlock Text="{Binding Name}"
+                           FontFamily="Consolas"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Separator}"
+                           FontFamily="Consolas"
+                           Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="{Binding Summary}"
+                           FontFamily="Consolas"
+                           Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="{Binding Value}"
+                           FontFamily="Consolas"
+                           Foreground="{Binding ValueBrush}"
+                           TextTrimming="CharacterEllipsis"
+                           MaxWidth="560" />
+            </StackPanel>
+        </HierarchicalDataTemplate>
+
         <HierarchicalDataTemplate DataType="{x:Type vm:ProfileTreeNodeViewModel}"
                                   ItemsSource="{Binding Children}">
             <Grid Margin="1,2" MinHeight="28">
@@ -684,11 +705,11 @@
                                     <StackPanel DockPanel.Dock="Right"
                                                 Orientation="Horizontal">
                                         <Button x:Name="ValueChartButton"
-                                                Content="Chart"
-                                                Command="{Binding OpenValueChartCommand}"
+                                                Content="Charts"
+                                                Click="OpenChartsButton_Click"
                                                 Style="{StaticResource QuietButtonStyle}"
                                                 Margin="0,0,4,0"
-                                                ToolTip="Plot numeric or boolean history" />
+                                                ToolTip="Open the chart window" />
                                         <Button x:Name="ValuePauseButton"
                                                 Content="{Binding HistoryPauseButtonText}"
                                                 Command="{Binding ToggleHistoryPauseCommand}"
@@ -701,8 +722,11 @@
                                     <TextBlock Text="Value"
                                                Style="{StaticResource SectionTitleStyle}" />
                                 </DockPanel>
-                                <controls:JsonPayloadViewer Grid.Row="1"
+                                <controls:JsonPayloadViewer x:Name="ValuePayloadViewer"
+                                                            Grid.Row="1"
                                                             Text="{Binding ValuePayloadText, Mode=OneWay}"
+                                                            EnableChartActions="True"
+                                                            ChartRequested="ValuePayloadViewer_ChartRequested"
                                                             FontFamily="Consolas"
                                                             FontSize="12"
                                                             VerticalScrollBarVisibility="Auto"
@@ -894,99 +918,6 @@
                 </Border>
             </Grid>
         </DockPanel>
-
-        <Border x:Name="ValueChartFlyout"
-                Width="720"
-                Height="380"
-                Margin="0,58,18,0"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Top"
-                Background="White"
-                CornerRadius="6"
-                Effect="{StaticResource ModalShadow}"
-                Visibility="{Binding ValueChartVisibility}"
-                Panel.ZIndex="20">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="48" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="38" />
-                </Grid.RowDefinitions>
-
-                <Border Grid.Row="0"
-                        Background="#FBFCFC"
-                        BorderBrush="{StaticResource BorderBrushSoft}"
-                        BorderThickness="0,0,0,1"
-                        CornerRadius="6,6,0,0"
-                        Padding="14,0">
-                    <DockPanel>
-                        <Button DockPanel.Dock="Right"
-                                Content="Close"
-                                Command="{Binding CloseValueChartCommand}"
-                                Style="{StaticResource QuietButtonStyle}"
-                                VerticalAlignment="Center" />
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="Value chart"
-                                       Style="{StaticResource SectionTitleStyle}" />
-                            <TextBlock Text="{Binding ValueChartTopicText}"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       FontSize="11.5"
-                                       TextTrimming="CharacterEllipsis"
-                                       MaxWidth="590" />
-                        </StackPanel>
-                    </DockPanel>
-                </Border>
-
-                <Grid Grid.Row="1" Margin="14,12,14,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Field"
-                               VerticalAlignment="Center"
-                               FontWeight="SemiBold"
-                               Margin="0,0,9,0" />
-                    <ComboBox Grid.Column="1"
-                              ItemsSource="{Binding ValueChartMetrics}"
-                              SelectedItem="{Binding SelectedValueChartMetric, Mode=TwoWay}"
-                              DisplayMemberPath="DisplayPath"
-                              MinWidth="320"
-                              MaxDropDownHeight="300" />
-                    <TextBlock Grid.Column="2"
-                               Text="{Binding ValueChartStatusText}"
-                               Foreground="{StaticResource MutedBrush}"
-                               VerticalAlignment="Center"
-                               Margin="14,0,0,0" />
-                </Grid>
-
-                <controls:ScalarHistoryChart Grid.Row="2"
-                                             Values="{Binding ValueChartValues}"
-                                             IsBoolean="{Binding ValueChartIsBoolean}"
-                                             Margin="10,0,10,0" />
-
-                <Grid Grid.Row="3"
-                      Margin="16,0"
-                      VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding ValueChartStartText}"
-                               Foreground="{StaticResource MutedBrush}" />
-                    <TextBlock Grid.Column="1"
-                               Text="{Binding ValueChartSummaryText}"
-                               HorizontalAlignment="Center"
-                               FontWeight="SemiBold"
-                               TextTrimming="CharacterEllipsis" />
-                    <TextBlock Grid.Column="2"
-                               Text="{Binding ValueChartEndText}"
-                               Foreground="{StaticResource MutedBrush}" />
-                </Grid>
-            </Grid>
-        </Border>
 
         <Grid Visibility="{Binding ConnectionManagerVisibility}"
               Background="#B3182422">
@@ -1664,7 +1595,7 @@
                             <Button Content="Validate"
                                     Command="{Binding ValidateJsonFormatterCommand}"
                                     Margin="0,0,8,0" />
-                            <Button Content="Copy result"
+                            <Button Content="Copy JSON"
                                     Command="{Binding CopyJsonFormatterCommand}"
                                     Margin="0,0,8,0" />
                             <Button Content="Clear"
@@ -1687,7 +1618,7 @@
                                        Style="{StaticResource SectionTitleStyle}"
                                        Margin="0,0,0,8" />
                             <TextBlock Grid.Column="2"
-                                       Text="Formatted result"
+                                       Text="Structure"
                                        Style="{StaticResource SectionTitleStyle}"
                                        Margin="0,0,0,8" />
 
@@ -1703,15 +1634,19 @@
                                      HorizontalScrollBarVisibility="Auto"
                                      Background="{StaticResource CodeBackgroundBrush}" />
 
-                            <controls:JsonPayloadViewer Grid.Row="1"
-                                                        Grid.Column="2"
-                                                        Text="{Binding JsonFormatterOutput, Mode=OneWay}"
-                                                        FontFamily="Consolas"
-                                                        FontSize="12"
-                                                        VerticalScrollBarVisibility="Auto"
-                                                        HorizontalScrollBarVisibility="Auto"
-                                                        BorderBrush="{StaticResource BorderBrushSoft}"
-                                                        Background="{StaticResource CodeBackgroundBrush}" />
+                            <Border Grid.Row="1"
+                                    Grid.Column="2"
+                                    Background="{StaticResource CodeBackgroundBrush}"
+                                    BorderBrush="{StaticResource BorderBrushSoft}"
+                                    BorderThickness="1">
+                                <TreeView x:Name="JsonStructureTree"
+                                          ItemsSource="{Binding JsonFormatterTreeRoots}"
+                                          Padding="8"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                          VirtualizingPanel.IsVirtualizing="True"
+                                          VirtualizingPanel.VirtualizationMode="Recycling" />
+                            </Border>
                         </Grid>
 
                         <Border Grid.Row="3"

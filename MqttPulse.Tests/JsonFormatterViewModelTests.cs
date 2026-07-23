@@ -19,6 +19,10 @@ public sealed class JsonFormatterViewModelTests
         StringAssert.Contains(viewModel.JsonFormatterOutput, Environment.NewLine);
         StringAssert.Contains(viewModel.JsonFormatterOutput, "\"상태\": \"정상\"");
         StringAssert.Contains(viewModel.JsonFormatterStatus, "정리");
+        Assert.HasCount(1, viewModel.JsonFormatterTreeRoots);
+        Assert.HasCount(2, viewModel.JsonFormatterTreeRoots[0].Children);
+        Assert.AreEqual("상태", viewModel.JsonFormatterTreeRoots[0].Children[0].Name);
+        Assert.AreEqual("정상", viewModel.JsonFormatterTreeRoots[0].Children[0].Value);
 
         viewModel.CloseJsonFormatterCommand.Execute(null);
 
@@ -37,6 +41,7 @@ public sealed class JsonFormatterViewModelTests
         viewModel.FormatJsonFormatterCommand.Execute(null);
 
         Assert.AreEqual(string.Empty, viewModel.JsonFormatterOutput);
+        Assert.IsEmpty(viewModel.JsonFormatterTreeRoots);
         StringAssert.Contains(viewModel.JsonFormatterStatus, "유효하지 않은 JSON");
     }
 }

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using MqttPulse.App.Controls;
 using MqttPulse.App.ViewModels;
 
 namespace MqttPulse.App;
@@ -12,13 +13,14 @@ public partial class MainWindow : Window
     private Point _profileTreeDragStart;
     private bool _isCommittingPeriodTopicSuggestion;
     private bool _isCommittingPublishTopicSuggestion;
+    private ChartDashboardWindow? _chartWindow;
 
     public MainWindow()
     {
         InitializeComponent();
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
-        Closed += (_, _) => _viewModel.Dispose();
+        Closed += MainWindow_Closed;
     }
 
     private void FolderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -48,6 +50,50 @@ public partial class MainWindow : Window
             menu.PlacementTarget = button;
             menu.IsOpen = true;
         }
+    }
+
+    private void OpenChartsButton_Click(object sender, RoutedEventArgs e)
+    {
+        ShowChartWindow();
+    }
+
+    private void ValuePayloadViewer_ChartRequested(
+        object? sender,
+        JsonChartRequestedEventArgs e)
+    {
+        if (_viewModel.SelectedTopic?.IsLeafTopic != true)
+        {
+            return;
+        }
+
+        var window = ShowChartWindow();
+        window.AddChart(_viewModel.SelectedTopic.FullTopic, e.Metric);
+        window.Activate();
+    }
+
+    private ChartDashboardWindow ShowChartWindow()
+    {
+        if (_chartWindow is null)
+        {
+            _chartWindow = new ChartDashboardWindow(_viewModel)
+            {
+                WindowStartupLocation = WindowStartupLocation.CenterScreen
+            };
+            _chartWindow.Closed += (_, _) => _chartWindow = null;
+        }
+
+        if (!_chartWindow.IsVisible)
+        {
+            _chartWindow.Show();
+        }
+
+        return _chartWindow;
+    }
+
+    private void MainWindow_Closed(object? sender, EventArgs e)
+    {
+        _chartWindow?.Close();
+        _viewModel.Dispose();
     }
 
     private void PublishTopicInput_TextChanged(object sender, TextChangedEventArgs e)

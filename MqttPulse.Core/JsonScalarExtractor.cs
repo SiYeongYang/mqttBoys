@@ -125,33 +125,13 @@ public static class JsonScalarExtractor
                 break;
 
             case JsonValueKind.Number:
-                if (element.TryGetDouble(out _))
-                {
-                    metrics.Add(new JsonScalarMetric(pointer, displayPath, JsonScalarKind.Number));
-                }
-
-                break;
-
             case JsonValueKind.True:
             case JsonValueKind.False:
-                metrics.Add(new JsonScalarMetric(pointer, displayPath, JsonScalarKind.Boolean));
-                break;
-
             case JsonValueKind.String:
-                var text = element.GetString();
-                if (bool.TryParse(text, out _))
+                if (TryGetScalarKind(element, out var kind))
                 {
-                    metrics.Add(new JsonScalarMetric(pointer, displayPath, JsonScalarKind.Boolean));
+                    metrics.Add(new JsonScalarMetric(pointer, displayPath, kind));
                 }
-                else if (double.TryParse(
-                             text,
-                             NumberStyles.Float,
-                             CultureInfo.InvariantCulture,
-                             out _))
-                {
-                    metrics.Add(new JsonScalarMetric(pointer, displayPath, JsonScalarKind.Number));
-                }
-
                 break;
         }
     }
@@ -240,7 +220,45 @@ public static class JsonScalarExtractor
         return false;
     }
 
-    private static string AppendDisplayProperty(string parent, string propertyName)
+    internal static bool TryGetScalarKind(JsonElement element, out JsonScalarKind kind)
+    {
+        if (element.ValueKind == JsonValueKind.Number && element.TryGetDouble(out _))
+        {
+            kind = JsonScalarKind.Number;
+            return true;
+        }
+
+        if (element.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            kind = JsonScalarKind.Boolean;
+            return true;
+        }
+
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            var text = element.GetString();
+            if (bool.TryParse(text, out _))
+            {
+                kind = JsonScalarKind.Boolean;
+                return true;
+            }
+
+            if (double.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out _))
+            {
+                kind = JsonScalarKind.Number;
+                return true;
+            }
+        }
+
+        kind = default;
+        return false;
+    }
+
+    internal static string AppendDisplayProperty(string parent, string propertyName)
     {
         if (propertyName.Length > 0
             && (char.IsLetter(propertyName[0]) || propertyName[0] == '_')
@@ -252,7 +270,7 @@ public static class JsonScalarExtractor
         return $"{parent}['{propertyName.Replace("'", "\\'", StringComparison.Ordinal)}']";
     }
 
-    private static string EscapePointerToken(string token) =>
+    internal static string EscapePointerToken(string token) =>
         token.Replace("~", "~0", StringComparison.Ordinal)
             .Replace("/", "~1", StringComparison.Ordinal);
 

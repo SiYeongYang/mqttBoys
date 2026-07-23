@@ -47,7 +47,7 @@ public static class JsonTextFormatter
         }
     }
 
-    private static string BuildError(JsonException exception)
+    internal static string BuildError(JsonException exception)
     {
         var line = exception.LineNumber is { } lineNumber ? lineNumber + 1 : 0;
         var column = exception.BytePositionInLine is { } bytePosition ? bytePosition + 1 : 0;

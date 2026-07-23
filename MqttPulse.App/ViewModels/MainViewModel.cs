@@ -17,12 +17,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private const int MaxPendingMessages = 10_000;
     private const long MaxPendingPayloadCharacters = 16_000_000;
     private const int HistoryDisplayLimit = 100;
-    private const int ValueChartSampleLimit = 120;
     private static readonly long UiDrainBudgetTicks = Stopwatch.Frequency / 100;
     private static readonly long ValueRefreshMinTicks = Stopwatch.Frequency / 10;
     private static readonly long HistoryRefreshMinTicks = Stopwatch.Frequency / 2;
     private static readonly long TopicVisualRefreshMinTicks = Stopwatch.Frequency / 2;
-    private static readonly long ValueChartRefreshMinTicks = Stopwatch.Frequency;
     private const int SearchResultLimit = 500;
     private const int MinPeriodCheckSeconds = 1;
     private const int MaxPeriodCheckSeconds = 3_600;
@@ -63,7 +61,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isPeriodCheckOpen;
     private bool _isPeriodCheckRunning;
     private bool _isJsonFormatterOpen;
-    private bool _isValueChartOpen;
     private bool _topicListsNeedRefresh;
     private bool _historyPaused;
     private bool _freezeDetail;
@@ -77,14 +74,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string _jsonFormatterInput = string.Empty;
     private string _jsonFormatterOutput = string.Empty;
     private string _jsonFormatterStatus = "왼쪽에 JSON을 붙여 넣고 Format을 누르세요.";
-    private JsonScalarMetric? _selectedValueChartMetric;
-    private IReadOnlyList<double> _valueChartValues = Array.Empty<double>();
-    private string _valueChartStatusText = "Choose a numeric or boolean field.";
-    private string _valueChartSummaryText = string.Empty;
-    private string _valueChartStartText = string.Empty;
-    private string _valueChartEndText = string.Empty;
-    private string _valueChartTopicText = string.Empty;
-    private bool _valueChartIsBoolean;
     private long _receivedMessages;
     private int _pendingQueueCount;
     private long _pendingPayloadCharacters;
@@ -92,9 +81,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private long _lastValueRefreshTimestamp;
     private long _lastHistoryRefreshTimestamp;
     private long _lastTopicVisualRefreshTimestamp;
-    private long _lastValueChartRefreshTimestamp;
-    private int _valueChartBuildVersion;
-    private bool _isApplyingValueChartMetric;
     private MqttMessageSnapshot? _pendingValueFormatMessage;
     private int _valueFormatWorkerRunning;
     private volatile bool _isDisposed;
@@ -126,10 +112,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CopyValueCommand = new RelayCommand(CopyValueToClipboard, () => !string.IsNullOrEmpty(ValuePayloadText));
         CopySelectedCommand = new RelayCommand(CopySelectedToClipboard, () => !string.IsNullOrEmpty(SelectedPayloadText));
         ToggleHistoryPauseCommand = new RelayCommand(ToggleHistoryPause);
-        OpenValueChartCommand = new RelayCommand(
-            OpenValueChart,
-            () => SelectedTopic?.IsLeafTopic == true && SelectedTopic.LastMessage is not null);
-        CloseValueChartCommand = new RelayCommand(CloseValueChart);
         OpenConnectionManagerCommand = new AsyncRelayCommand(OpenConnectionManagerAsync, () => !IsBusy && !IsPeriodCheckRunning);
         CloseConnectionManagerCommand = new RelayCommand(CloseConnectionManager);
         OpenPeriodCheckCommand = new RelayCommand(OpenPeriodCheck, () => IsConnected && !IsPeriodCheckRunning);
@@ -187,7 +169,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<PeriodCheckHistoryItemViewModel> PeriodCheckHistory { get; } = new();
 
-    public ObservableCollection<JsonScalarMetric> ValueChartMetrics { get; } = new();
+    public ObservableCollection<JsonTreeNodeViewModel> JsonFormatterTreeRoots { get; } = new();
 
     public string AppVersionText { get; } = CreateAppVersionText();
 
@@ -214,10 +196,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand CopySelectedCommand { get; }
 
     public RelayCommand ToggleHistoryPauseCommand { get; }
-
-    public RelayCommand OpenValueChartCommand { get; }
-
-    public RelayCommand CloseValueChartCommand { get; }
 
     public AsyncRelayCommand OpenConnectionManagerCommand { get; }
 
@@ -341,11 +319,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 _lastValueRefreshTimestamp = 0;
                 _lastHistoryRefreshTimestamp = 0;
                 RefreshSelectedTopic(keepCurrentSelection: false);
-                OpenValueChartCommand.RaiseCanExecuteChanged();
-                if (IsValueChartOpen)
-                {
-                    QueueValueChartModelRefresh();
-                }
             }
         }
     }
@@ -715,79 +688,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _jsonFormatterStatus, value);
     }
 
-    public bool IsValueChartOpen
-    {
-        get => _isValueChartOpen;
-        private set
-        {
-            if (SetProperty(ref _isValueChartOpen, value))
-            {
-                OnPropertyChanged(nameof(ValueChartVisibility));
-            }
-        }
-    }
-
-    public Visibility ValueChartVisibility => IsValueChartOpen
-        ? Visibility.Visible
-        : Visibility.Collapsed;
-
-    public JsonScalarMetric? SelectedValueChartMetric
-    {
-        get => _selectedValueChartMetric;
-        set
-        {
-            if (SetProperty(ref _selectedValueChartMetric, value)
-                && !_isApplyingValueChartMetric
-                && value is not null)
-            {
-                _lastValueChartRefreshTimestamp = 0;
-                QueueValueChartSeriesRefresh(force: true);
-            }
-        }
-    }
-
-    public IReadOnlyList<double> ValueChartValues
-    {
-        get => _valueChartValues;
-        private set => SetProperty(ref _valueChartValues, value);
-    }
-
-    public string ValueChartStatusText
-    {
-        get => _valueChartStatusText;
-        private set => SetProperty(ref _valueChartStatusText, value);
-    }
-
-    public string ValueChartSummaryText
-    {
-        get => _valueChartSummaryText;
-        private set => SetProperty(ref _valueChartSummaryText, value);
-    }
-
-    public string ValueChartStartText
-    {
-        get => _valueChartStartText;
-        private set => SetProperty(ref _valueChartStartText, value);
-    }
-
-    public string ValueChartEndText
-    {
-        get => _valueChartEndText;
-        private set => SetProperty(ref _valueChartEndText, value);
-    }
-
-    public string ValueChartTopicText
-    {
-        get => _valueChartTopicText;
-        private set => SetProperty(ref _valueChartTopicText, value);
-    }
-
-    public bool ValueChartIsBoolean
-    {
-        get => _valueChartIsBoolean;
-        private set => SetProperty(ref _valueChartIsBoolean, value);
-    }
-
     public bool HistoryPaused
     {
         get => _historyPaused;
@@ -838,7 +738,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         _isDisposed = true;
         Interlocked.Exchange(ref _pendingValueFormatMessage, null);
-        Interlocked.Increment(ref _valueChartBuildVersion);
         _periodCheckCancellation?.Cancel();
         _flushTimer.Stop();
         _mqttClient.Dispose();
@@ -1058,11 +957,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (!HistoryPaused)
         {
             RefreshSelectedTopic(keepCurrentSelection: true);
-            if (IsValueChartOpen)
-            {
-                _lastValueChartRefreshTimestamp = 0;
-                QueueValueChartSeriesRefresh(force: true);
-            }
         }
     }
 
@@ -1084,7 +978,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 out var formatted,
                 out var error))
         {
+            JsonFormatterInput = formatted;
             JsonFormatterOutput = formatted;
+            BuildJsonFormatterTree(formatted);
             JsonFormatterStatus = indented
                 ? "JSON 형식을 정리했습니다."
                 : "JSON을 한 줄로 압축했습니다.";
@@ -1092,18 +988,27 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         JsonFormatterOutput = string.Empty;
+        JsonFormatterTreeRoots.Clear();
         JsonFormatterStatus = error;
     }
 
     private void ValidateJsonFormatter()
     {
-        JsonFormatterStatus = JsonTextFormatter.TryFormat(
-            JsonFormatterInput,
-            indented: false,
-            out _,
-            out var error)
-            ? "유효한 JSON입니다."
-            : error;
+        if (JsonTextFormatter.TryFormat(
+                JsonFormatterInput,
+                indented: false,
+                out var compact,
+                out var error))
+        {
+            JsonFormatterOutput = compact;
+            BuildJsonFormatterTree(compact);
+            JsonFormatterStatus = "유효한 JSON입니다.";
+            return;
+        }
+
+        JsonFormatterOutput = string.Empty;
+        JsonFormatterTreeRoots.Clear();
+        JsonFormatterStatus = error;
     }
 
     private void CopyJsonFormatter()
@@ -1121,281 +1026,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         JsonFormatterInput = string.Empty;
         JsonFormatterOutput = string.Empty;
+        JsonFormatterTreeRoots.Clear();
         JsonFormatterStatus = "왼쪽에 JSON을 붙여 넣고 Format을 누르세요.";
     }
 
-    private void OpenValueChart()
+    private void BuildJsonFormatterTree(string json)
     {
-        if (SelectedTopic?.IsLeafTopic != true || SelectedTopic.LastMessage is null)
+        JsonFormatterTreeRoots.Clear();
+        if (JsonStructureBuilder.TryBuild(json, out var root, out _)
+            && root is not null)
         {
-            return;
+            JsonFormatterTreeRoots.Add(new JsonTreeNodeViewModel(root, isRoot: true));
         }
-
-        IsValueChartOpen = true;
-        QueueValueChartModelRefresh();
-    }
-
-    private void CloseValueChart()
-    {
-        IsValueChartOpen = false;
-        Interlocked.Increment(ref _valueChartBuildVersion);
-    }
-
-    private void QueueValueChartModelRefresh()
-    {
-        var topic = SelectedTopic;
-        if (!IsValueChartOpen || topic?.LastMessage is not { } latestMessage)
-        {
-            ValueChartTopicText = string.Empty;
-            ClearValueChart("Select a leaf topic with JSON data.");
-            return;
-        }
-
-        var history = topic.HistoryNewestFirst(ValueChartSampleLimit)
-            .Reverse()
-            .ToArray();
-        var preferredPointer = SelectedValueChartMetric?.Pointer;
-        var version = Interlocked.Increment(ref _valueChartBuildVersion);
-        ValueChartTopicText = topic.FullTopic;
-        ValueChartStatusText = "Finding numeric and boolean fields...";
-
-        _ = BuildValueChartModelAsync(
-            topic,
-            latestMessage.PayloadText,
-            history,
-            preferredPointer,
-            version);
-    }
-
-    private async Task BuildValueChartModelAsync(
-        TopicViewModel topic,
-        string latestPayload,
-        IReadOnlyList<MqttMessageSnapshot> history,
-        string? preferredPointer,
-        int version)
-    {
-        try
-        {
-            var model = await Task.Run(() =>
-            {
-                var metrics = JsonScalarExtractor.Discover(latestPayload);
-                var selectedMetric = metrics.FirstOrDefault(metric =>
-                                         metric.Pointer.Equals(preferredPointer, StringComparison.Ordinal))
-                                     ?? metrics.FirstOrDefault();
-                var series = selectedMetric is null
-                    ? ValueChartSeriesResult.Empty("No numeric or boolean fields in the latest JSON.")
-                    : BuildValueChartSeries(history, selectedMetric);
-                return new ValueChartModelResult(metrics, selectedMetric, series);
-            }).ConfigureAwait(false);
-
-            await _dispatcher.InvokeAsync(() =>
-            {
-                if (!IsValueChartOpen
-                    || version != Volatile.Read(ref _valueChartBuildVersion)
-                    || !ReferenceEquals(topic, SelectedTopic))
-                {
-                    return;
-                }
-
-                _isApplyingValueChartMetric = true;
-                try
-                {
-                    ValueChartMetrics.Clear();
-                    foreach (var metric in model.Metrics)
-                    {
-                        ValueChartMetrics.Add(metric);
-                    }
-
-                    SelectedValueChartMetric = model.SelectedMetric;
-                }
-                finally
-                {
-                    _isApplyingValueChartMetric = false;
-                }
-
-                ApplyValueChartSeries(model.Series, model.SelectedMetric);
-                _lastValueChartRefreshTimestamp = Stopwatch.GetTimestamp();
-            }, DispatcherPriority.DataBind);
-        }
-        catch (Exception ex)
-        {
-            await TrySetValueChartErrorAsync(topic, version, ex.Message);
-        }
-    }
-
-    private void QueueValueChartSeriesRefresh(bool force)
-    {
-        var topic = SelectedTopic;
-        var metric = SelectedValueChartMetric;
-        if (!IsValueChartOpen || topic is null || metric is null)
-        {
-            return;
-        }
-
-        var now = Stopwatch.GetTimestamp();
-        if (!force && now - _lastValueChartRefreshTimestamp < ValueChartRefreshMinTicks)
-        {
-            return;
-        }
-
-        _lastValueChartRefreshTimestamp = now;
-        var history = topic.HistoryNewestFirst(ValueChartSampleLimit)
-            .Reverse()
-            .ToArray();
-        var version = Interlocked.Increment(ref _valueChartBuildVersion);
-        _ = BuildValueChartSeriesAsync(topic, metric, history, version);
-    }
-
-    private async Task BuildValueChartSeriesAsync(
-        TopicViewModel topic,
-        JsonScalarMetric metric,
-        IReadOnlyList<MqttMessageSnapshot> history,
-        int version)
-    {
-        try
-        {
-            var series = await Task.Run(() => BuildValueChartSeries(history, metric))
-                .ConfigureAwait(false);
-            await _dispatcher.InvokeAsync(() =>
-            {
-                if (!IsValueChartOpen
-                    || version != Volatile.Read(ref _valueChartBuildVersion)
-                    || !ReferenceEquals(topic, SelectedTopic)
-                    || !Equals(metric, SelectedValueChartMetric))
-                {
-                    return;
-                }
-
-                ApplyValueChartSeries(series, metric);
-            }, DispatcherPriority.DataBind);
-        }
-        catch (Exception ex)
-        {
-            await TrySetValueChartErrorAsync(topic, version, ex.Message);
-        }
-    }
-
-    private async Task TrySetValueChartErrorAsync(TopicViewModel topic, int version, string message)
-    {
-        if (_isDisposed || _dispatcher.HasShutdownStarted)
-        {
-            return;
-        }
-
-        try
-        {
-            await _dispatcher.InvokeAsync(() =>
-            {
-                if (IsValueChartOpen
-                    && version == Volatile.Read(ref _valueChartBuildVersion)
-                    && ReferenceEquals(topic, SelectedTopic))
-                {
-                    ClearValueChart($"Chart failed: {message}");
-                }
-            }, DispatcherPriority.DataBind);
-        }
-        catch (TaskCanceledException) when (_isDisposed || _dispatcher.HasShutdownStarted)
-        {
-        }
-        catch (InvalidOperationException) when (_isDisposed || _dispatcher.HasShutdownStarted)
-        {
-        }
-    }
-
-    private void ApplyValueChartSeries(
-        ValueChartSeriesResult series,
-        JsonScalarMetric? metric)
-    {
-        ValueChartValues = series.Values;
-        ValueChartStatusText = series.StatusText;
-        ValueChartSummaryText = series.SummaryText;
-        ValueChartStartText = series.StartText;
-        ValueChartEndText = series.EndText;
-        ValueChartIsBoolean = metric?.IsBoolean == true;
-    }
-
-    private void ClearValueChart(string status)
-    {
-        _isApplyingValueChartMetric = true;
-        try
-        {
-            ValueChartMetrics.Clear();
-            SelectedValueChartMetric = null;
-        }
-        finally
-        {
-            _isApplyingValueChartMetric = false;
-        }
-
-        ValueChartValues = Array.Empty<double>();
-        ValueChartStatusText = status;
-        ValueChartSummaryText = string.Empty;
-        ValueChartStartText = string.Empty;
-        ValueChartEndText = string.Empty;
-        ValueChartIsBoolean = false;
-    }
-
-    private static ValueChartSeriesResult BuildValueChartSeries(
-        IReadOnlyList<MqttMessageSnapshot> history,
-        JsonScalarMetric metric)
-    {
-        var values = new List<double>(history.Count);
-        var timestamps = new List<DateTimeOffset>(history.Count);
-        foreach (var message in history)
-        {
-            if (!JsonScalarExtractor.TryRead(message.PayloadText, metric, out var value))
-            {
-                continue;
-            }
-
-            values.Add(value);
-            timestamps.Add(message.ReceivedAt);
-        }
-
-        if (values.Count == 0)
-        {
-            return ValueChartSeriesResult.Empty("No samples for the selected field.");
-        }
-
-        string summary;
-        if (metric.IsBoolean)
-        {
-            var trueCount = values.Count(value => value >= 0.5);
-            var transitions = 0;
-            for (var index = 1; index < values.Count; index++)
-            {
-                if ((values[index - 1] >= 0.5) != (values[index] >= 0.5))
-                {
-                    transitions++;
-                }
-            }
-
-            summary = $"Current {(values[^1] >= 0.5 ? "True" : "False")}  |  "
-                      + $"True {(double)trueCount / values.Count:P0}  |  "
-                      + $"Transitions {transitions:N0}";
-        }
-        else
-        {
-            summary = $"Current {FormatChartNumber(values[^1])}  |  "
-                      + $"Avg {FormatChartNumber(values.Average())}  |  "
-                      + $"Min {FormatChartNumber(values.Min())}  |  "
-                      + $"Max {FormatChartNumber(values.Max())}";
-        }
-
-        return new ValueChartSeriesResult(
-            values.ToArray(),
-            $"{values.Count:N0} samples",
-            summary,
-            timestamps[0].ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture),
-            timestamps[^1].ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture));
-    }
-
-    private static string FormatChartNumber(double value)
-    {
-        var absolute = Math.Abs(value);
-        return ((absolute > 0 && absolute < 0.001) || absolute >= 1_000_000)
-            ? value.ToString("0.###E+0", CultureInfo.InvariantCulture)
-            : value.ToString("0.###", CultureInfo.InvariantCulture);
     }
 
     private Task OpenConnectionManagerAsync()
@@ -1926,11 +1568,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 RefreshSelectedTopicHistory(keepCurrentSelection: true);
             }
 
-            if (IsValueChartOpen)
-            {
-                QueueValueChartSeriesRefresh(force: false);
-            }
         }
+    }
+
+    public TopicViewModel? FindLeafTopic(string fullTopic)
+    {
+        return _leafTopicsByFullName.GetValueOrDefault(fullTopic)
+               ?? (SelectedTopic?.FullTopic.Equals(fullTopic, StringComparison.Ordinal) == true
+                   ? SelectedTopic
+                   : null);
     }
 
     private void FlushTopicVisualChanges(bool force = false)
@@ -2496,25 +2142,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ClosePeriodCheckCommand.RaiseCanExecuteChanged();
         StartPeriodCheckCommand.RaiseCanExecuteChanged();
         StopPeriodCheckCommand.RaiseCanExecuteChanged();
-        OpenValueChartCommand.RaiseCanExecuteChanged();
         DeleteProfileCommand.RaiseCanExecuteChanged();
         RenameFolderCommand.RaiseCanExecuteChanged();
         DeleteFolderCommand.RaiseCanExecuteChanged();
     }
 
-    private sealed record ValueChartModelResult(
-        IReadOnlyList<JsonScalarMetric> Metrics,
-        JsonScalarMetric? SelectedMetric,
-        ValueChartSeriesResult Series);
-
-    private sealed record ValueChartSeriesResult(
-        IReadOnlyList<double> Values,
-        string StatusText,
-        string SummaryText,
-        string StartText,
-        string EndText)
-    {
-        public static ValueChartSeriesResult Empty(string status) =>
-            new(Array.Empty<double>(), status, string.Empty, string.Empty, string.Empty);
-    }
 }
