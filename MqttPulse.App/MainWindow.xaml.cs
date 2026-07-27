@@ -11,6 +11,8 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
     private Point _profileTreeDragStart;
+    private ProfileTreeNodeViewModel? _profileTreeDragSource;
+    private ProfileTreeNodeViewModel? _profileTreeDropTarget;
     private bool _isCommittingPeriodTopicSuggestion;
     private bool _isCommittingPublishTopicSuggestion;
     private ChartDashboardWindow? _chartWindow;
@@ -363,6 +365,7 @@ public partial class MainWindow : Window
     private void ProfileTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _profileTreeDragStart = e.GetPosition(ProfileTree);
+        _profileTreeDragSource = FindProfileTreeNode(e.OriginalSource as DependencyObject);
     }
 
     private void ProfileTree_MouseMove(object sender, MouseEventArgs e)
@@ -379,21 +382,58 @@ public partial class MainWindow : Window
             return;
         }
 
-        var source = FindProfileTreeNode(e.OriginalSource as DependencyObject);
+        var source = _profileTreeDragSource;
         if (source is null)
         {
             return;
         }
 
-        DragDrop.DoDragDrop(ProfileTree, source, DragDropEffects.Move);
+        try
+        {
+            DragDrop.DoDragDrop(ProfileTree, source, DragDropEffects.Move);
+        }
+        finally
+        {
+            ClearProfileTreeDropTarget();
+            _profileTreeDragSource = null;
+        }
     }
 
     private void ProfileTree_DragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(typeof(ProfileTreeNodeViewModel))
-            ? DragDropEffects.Move
-            : DragDropEffects.None;
+        if (!e.Data.GetDataPresent(typeof(ProfileTreeNodeViewModel)))
+        {
+            e.Effects = DragDropEffects.None;
+            ClearProfileTreeDropTarget();
+            e.Handled = true;
+            return;
+        }
+
+        var source = (ProfileTreeNodeViewModel)e.Data.GetData(typeof(ProfileTreeNodeViewModel))!;
+        var originalSource = e.OriginalSource as DependencyObject;
+        var targetItem = FindProfileTreeItem(originalSource);
+        var target = targetItem?.DataContext as ProfileTreeNodeViewModel;
+        if (ReferenceEquals(source, target))
+        {
+            e.Effects = DragDropEffects.None;
+            ClearProfileTreeDropTarget();
+            e.Handled = true;
+            return;
+        }
+
+        var targetSurface = FindProfileTreeDropSurface(originalSource, targetItem);
+        var position = GetProfileNodeDropPosition(targetSurface, target, e);
+        SetProfileTreeDropTarget(target, position);
+        e.Effects = DragDropEffects.Move;
         e.Handled = true;
+    }
+
+    private void ProfileTree_DragLeave(object sender, DragEventArgs e)
+    {
+        if (!ProfileTree.IsMouseOver)
+        {
+            ClearProfileTreeDropTarget();
+        }
     }
 
     private void ProfileTree_Drop(object sender, DragEventArgs e)
@@ -404,28 +444,136 @@ public partial class MainWindow : Window
         }
 
         var source = (ProfileTreeNodeViewModel)e.Data.GetData(typeof(ProfileTreeNodeViewModel))!;
-        var target = FindProfileTreeNode(e.OriginalSource as DependencyObject);
+        var targetItem = FindProfileTreeItem(e.OriginalSource as DependencyObject);
+        var target = targetItem?.DataContext as ProfileTreeNodeViewModel;
+        var position = target?.DropPosition
+            ?? ProfileNodeDropPosition.After;
+        ClearProfileTreeDropTarget();
         if (!ReferenceEquals(source, target))
         {
-            _viewModel.MoveProfileNode(source, target);
+            _viewModel.MoveProfileNode(source, target, position);
         }
 
         e.Handled = true;
     }
 
-    private static ProfileTreeNodeViewModel? FindProfileTreeNode(DependencyObject? source)
+    private void SetProfileTreeDropTarget(
+        ProfileTreeNodeViewModel? target,
+        ProfileNodeDropPosition position)
+    {
+        if (!ReferenceEquals(_profileTreeDropTarget, target))
+        {
+            ClearProfileTreeDropTarget();
+            _profileTreeDropTarget = target;
+        }
+
+        if (_profileTreeDropTarget is not null)
+        {
+            _profileTreeDropTarget.DropPosition = position;
+        }
+    }
+
+    private void ClearProfileTreeDropTarget()
+    {
+        if (_profileTreeDropTarget is not null)
+        {
+            _profileTreeDropTarget.DropPosition = ProfileNodeDropPosition.None;
+            _profileTreeDropTarget = null;
+        }
+    }
+
+    private static ProfileNodeDropPosition GetProfileNodeDropPosition(
+        FrameworkElement? targetSurface,
+        ProfileTreeNodeViewModel? target,
+        DragEventArgs e)
+    {
+        if (targetSurface is null || target is null)
+        {
+            return ProfileNodeDropPosition.After;
+        }
+
+        var height = Math.Max(targetSurface.ActualHeight, 1);
+        var y = e.GetPosition(targetSurface).Y;
+        if (!target.IsFolder)
+        {
+            return y < height / 2
+                ? ProfileNodeDropPosition.Before
+                : ProfileNodeDropPosition.After;
+        }
+
+        if (y < height * 0.25)
+        {
+            return ProfileNodeDropPosition.Before;
+        }
+
+        return y > height * 0.75
+            ? ProfileNodeDropPosition.After
+            : ProfileNodeDropPosition.Into;
+    }
+
+    private static FrameworkElement? FindProfileTreeDropSurface(
+        DependencyObject? source,
+        TreeViewItem? targetItem)
+    {
+        while (source is not null && !ReferenceEquals(source, targetItem))
+        {
+            if (source is FrameworkElement { Name: "ProfileNodeDropSurface" } surface)
+            {
+                return surface;
+            }
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return targetItem is null
+            ? null
+            : FindVisualDescendant<FrameworkElement>(
+                targetItem,
+                element => element.Name == "ProfileNodeDropSurface"
+                           && ReferenceEquals(element.DataContext, targetItem.DataContext));
+    }
+
+    private static T? FindVisualDescendant<T>(
+        DependencyObject parent,
+        Predicate<T> predicate)
+        where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match && predicate(match))
+            {
+                return match;
+            }
+
+            var descendant = FindVisualDescendant(child, predicate);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
+    }
+
+    private static TreeViewItem? FindProfileTreeItem(DependencyObject? source)
     {
         while (source is not null)
         {
-            if (source is TreeViewItem item && item.DataContext is ProfileTreeNodeViewModel node)
+            if (source is TreeViewItem item)
             {
-                return node;
+                return item;
             }
 
             source = VisualTreeHelper.GetParent(source);
         }
 
         return null;
+    }
+
+    private static ProfileTreeNodeViewModel? FindProfileTreeNode(DependencyObject? source)
+    {
+        return FindProfileTreeItem(source)?.DataContext as ProfileTreeNodeViewModel;
     }
     private void ProfileTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {

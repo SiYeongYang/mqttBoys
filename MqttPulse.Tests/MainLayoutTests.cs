@@ -176,6 +176,54 @@ public sealed class MainLayoutTests
     }
 
     [TestMethod]
+    public void ConnectionFolderEditorUsesFooterSaveAndOneLeftDeleteAction()
+    {
+        RunInWindow(window =>
+        {
+            var folderName = (TextBox)window.FindName("FolderNameInput");
+            var deleteFolder = (Button)window.FindName("DeleteFolderButton");
+            var buttons = FindLogicalDescendants<Button>(window).ToArray();
+
+            Assert.IsNotNull(folderName);
+            Assert.IsNotNull(deleteFolder);
+            Assert.HasCount(
+                1,
+                buttons.Where(button => Equals(button.Content, "Delete folder")).ToArray());
+            Assert.IsEmpty(
+                buttons.Where(button => Equals(button.Content, "Rename folder")).ToArray());
+            Assert.HasCount(
+                1,
+                buttons.Where(button => Equals(button.Content, "Save changes")).ToArray());
+        });
+    }
+
+    [TestMethod]
+    public void ConnectionTreeShowsBeforeInsideAndAfterDropHints()
+    {
+        RunInWindow(window =>
+        {
+            var template = (HierarchicalDataTemplate)window.FindResource(
+                new DataTemplateKey(typeof(ProfileTreeNodeViewModel)));
+            var folder = new ProfileTreeNodeViewModel("Factory", "Factory", profile: null);
+            var presenter = RealizeTemplate(template, folder);
+            var surface = (Border)template.FindName("ProfileNodeDropSurface", presenter);
+
+            folder.DropPosition = ProfileNodeDropPosition.Before;
+            presenter.UpdateLayout();
+            Assert.AreEqual(new Thickness(0, 2, 0, 0), surface.BorderThickness);
+
+            folder.DropPosition = ProfileNodeDropPosition.Into;
+            presenter.UpdateLayout();
+            Assert.AreEqual(new Thickness(1), surface.BorderThickness);
+            Assert.AreNotEqual(Brushes.Transparent, surface.Background);
+
+            folder.DropPosition = ProfileNodeDropPosition.After;
+            presenter.UpdateLayout();
+            Assert.AreEqual(new Thickness(0, 0, 0, 2), surface.BorderThickness);
+        });
+    }
+
+    [TestMethod]
     public void ValueAndSelectedViewersExposeChartActionsBesideNumericAndBooleanRows()
     {
         RunInWindow(window =>
@@ -307,6 +355,23 @@ public sealed class MainLayoutTests
         presenter.Arrange(new Rect(0, 0, 280, 80));
         presenter.UpdateLayout();
         return presenter;
+    }
+
+    private static IEnumerable<T> FindLogicalDescendants<T>(DependencyObject parent)
+        where T : DependencyObject
+    {
+        foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+        {
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var descendant in FindLogicalDescendants<T>(child))
+            {
+                yield return descendant;
+            }
+        }
     }
 
     private static void PumpDispatcher(TimeSpan duration)

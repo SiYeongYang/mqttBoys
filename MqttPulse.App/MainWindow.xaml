@@ -497,7 +497,15 @@
 
         <HierarchicalDataTemplate DataType="{x:Type vm:ProfileTreeNodeViewModel}"
                                   ItemsSource="{Binding Children}">
-            <Grid Margin="1,2" MinHeight="28">
+            <Border x:Name="ProfileNodeDropSurface"
+                    Margin="1,1"
+                    Padding="1"
+                    MinHeight="30"
+                    Background="Transparent"
+                    BorderBrush="{StaticResource AccentBrush}"
+                    BorderThickness="0"
+                    CornerRadius="3">
+            <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="18" />
                     <ColumnDefinition Width="*" />
@@ -568,12 +576,23 @@
                                Visibility="Collapsed" />
                 </Grid>
             </Grid>
+            </Border>
             <HierarchicalDataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsFolder}" Value="False">
                     <Setter TargetName="FolderIcon" Property="Visibility" Value="Collapsed" />
                     <Setter TargetName="BrokerIcon" Property="Visibility" Value="Visible" />
                     <Setter TargetName="ProfileNodeName" Property="FontWeight" Value="Normal" />
                     <Setter TargetName="ProfileNodeDetail" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding DropPosition}" Value="Before">
+                    <Setter TargetName="ProfileNodeDropSurface" Property="BorderThickness" Value="0,2,0,0" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding DropPosition}" Value="Into">
+                    <Setter TargetName="ProfileNodeDropSurface" Property="Background" Value="#D8EBE7" />
+                    <Setter TargetName="ProfileNodeDropSurface" Property="BorderThickness" Value="1" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding DropPosition}" Value="After">
+                    <Setter TargetName="ProfileNodeDropSurface" Property="BorderThickness" Value="0,0,0,2" />
                 </DataTrigger>
             </HierarchicalDataTemplate.Triggers>
         </HierarchicalDataTemplate>
@@ -1057,6 +1076,7 @@
                                       PreviewMouseLeftButtonDown="ProfileTree_PreviewMouseLeftButtonDown"
                                       MouseMove="ProfileTree_MouseMove"
                                       DragOver="ProfileTree_DragOver"
+                                      DragLeave="ProfileTree_DragLeave"
                                       Drop="ProfileTree_Drop"
                                       AllowDrop="True"
                                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -1076,11 +1096,13 @@
                                             Margin="4,0,0,4" />
                                 </UniformGrid>
                                 <UniformGrid Grid.Row="1" Columns="2">
-                                    <Button Content="Delete broker"
+                                    <Button x:Name="DeleteBrokerButton"
+                                            Content="Delete broker"
                                             Command="{Binding DeleteProfileCommand}"
                                             Style="{StaticResource DangerButtonStyle}"
                                             Margin="0,4,4,0" />
-                                    <Button Content="Delete folder"
+                                    <Button x:Name="DeleteFolderButton"
+                                            Content="Delete folder"
                                             Command="{Binding DeleteFolderCommand}"
                                             Style="{StaticResource DangerButtonStyle}"
                                             Margin="4,4,0,0" />
@@ -1279,7 +1301,8 @@
                                            Style="{StaticResource SectionTitleStyle}"
                                            Margin="0,0,0,14" />
                                 <TextBlock Text="Name" Style="{StaticResource FieldLabelStyle}" />
-                                <TextBox Text="{Binding SelectedFolderName, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox x:Name="FolderNameInput"
+                                         Text="{Binding SelectedFolderName, UpdateSourceTrigger=PropertyChanged}" />
 
                                 <Grid Margin="0,18,0,0">
                                     <Grid.ColumnDefinitions>
@@ -1297,17 +1320,6 @@
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedFolderParentPath}" TextTrimming="CharacterEllipsis" Margin="0,12,0,5" />
                                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedFolderSummaryText}" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,0" />
                                 </Grid>
-
-                                <StackPanel Orientation="Horizontal"
-                                            HorizontalAlignment="Right"
-                                            Margin="0,20,0,0">
-                                    <Button Content="Rename folder"
-                                            Command="{Binding RenameFolderCommand}"
-                                            Margin="0,0,8,0" />
-                                    <Button Content="Delete folder"
-                                            Command="{Binding DeleteFolderCommand}"
-                                            Style="{StaticResource DangerButtonStyle}" />
-                                </StackPanel>
                             </StackPanel>
 
                             <Grid Visibility="{Binding EmptyConnectionEditorVisibility}">

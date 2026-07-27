@@ -31,7 +31,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly Dictionary<string, TopicViewModel> _leafTopicsByFullName = new(StringComparer.Ordinal);
     private readonly HashSet<TopicViewModel> _dirtyTopicNodes = new();
     private readonly HashSet<string> _profileFolderPaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> _profileTreeOrder = new();
     private readonly ProfileStore _profileStore;
+    private readonly IConfirmationService _confirmationService;
     private readonly MqttClientService _mqttClient = new();
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _flushTimer;
@@ -87,16 +89,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private int _valueFormatWorkerRunning;
     private volatile bool _isDisposed;
 
-    public MainViewModel(ProfileStore? profileStore = null)
+    public MainViewModel(
+        ProfileStore? profileStore = null,
+        IConfirmationService? confirmationService = null)
     {
         _dispatcher = Dispatcher.CurrentDispatcher;
         _profileStore = profileStore ?? new ProfileStore();
+        _confirmationService = confirmationService ?? new MessageBoxConfirmationService();
         var library = _profileStore.LoadLibrary();
         Profiles = new ObservableCollection<BrokerProfile>(library.Profiles);
         foreach (var folderPath in library.FolderPaths.Select(ProfileTreeBuilder.NormalizeFolderPath).Where(x => x.Length > 0))
         {
             _profileFolderPaths.Add(folderPath);
         }
+        _profileTreeOrder.AddRange(library.TreeOrder);
 
         if (Profiles.Count == 0)
         {
@@ -792,89 +798,160 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void MoveProfileNode(ProfileTreeNodeViewModel source, ProfileTreeNodeViewModel? target)
     {
-        if (source.IsFolder)
-        {
-            MoveFolderNode(source, target);
-            return;
-        }
-
-        if (source.Profile is null)
-        {
-            return;
-        }
-
-        var targetFolderPath = GetDropTargetFolderPath(target);
-        var normalizedTarget = ProfileTreeBuilder.NormalizeFolderPath(targetFolderPath);
-        if (ProfileTreeBuilder.NormalizeFolderPath(source.Profile.FolderPath).Equals(normalizedTarget, StringComparison.OrdinalIgnoreCase))
-        {
-            StatusMessage = "Broker is already in that folder.";
-            return;
-        }
-
-        source.Profile.FolderPath = normalizedTarget;
-        if (normalizedTarget.Length > 0)
-        {
-            _profileFolderPaths.Add(normalizedTarget);
-        }
-
-        SelectedProfile = source.Profile;
-        SaveProfiles(rebuildTree: true);
-        StatusMessage = normalizedTarget.Length == 0
-            ? $"Broker moved to root: {source.Profile.Name}"
-            : $"Broker moved to {normalizedTarget}: {source.Profile.Name}";
+        var position = target?.IsFolder == true
+            ? ProfileNodeDropPosition.Into
+            : ProfileNodeDropPosition.After;
+        MoveProfileNode(source, target, position);
     }
 
-    private void MoveFolderNode(ProfileTreeNodeViewModel source, ProfileTreeNodeViewModel? target)
+    public void MoveProfileNode(
+        ProfileTreeNodeViewModel source,
+        ProfileTreeNodeViewModel? target,
+        ProfileNodeDropPosition position)
     {
-        var oldPath = ProfileTreeBuilder.NormalizeFolderPath(source.FullPath);
-        var targetFolderPath = GetDropTargetFolderPath(target);
-        var normalizedTarget = ProfileTreeBuilder.NormalizeFolderPath(targetFolderPath);
-        if (oldPath.Length == 0)
+        if (position == ProfileNodeDropPosition.None || ReferenceEquals(source, target))
         {
             return;
         }
 
-        if (normalizedTarget.Equals(oldPath, StringComparison.OrdinalIgnoreCase)
-            || normalizedTarget.StartsWith(oldPath + "/", StringComparison.OrdinalIgnoreCase))
+        if (target?.IsFolder != true && position == ProfileNodeDropPosition.Into)
+        {
+            position = ProfileNodeDropPosition.After;
+        }
+
+        var targetKey = target is null ? null : ProfileTreeBuilder.GetOrderKey(target);
+        var destinationParentPath = GetDropDestinationParentPath(target, position);
+        string sourceKey;
+        string status;
+
+        if (source.IsFolder)
+        {
+            var oldPath = ProfileTreeBuilder.NormalizeFolderPath(source.FullPath);
+            if (!TryMoveFolderData(oldPath, destinationParentPath, out var newPath))
+            {
+                return;
+            }
+
+            sourceKey = ProfileTreeBuilder.GetFolderOrderKey(newPath);
+            status = oldPath.Equals(newPath, StringComparison.OrdinalIgnoreCase)
+                ? $"Folder reordered: {newPath}"
+                : $"Folder moved: {oldPath} -> {newPath}";
+        }
+        else if (source.Profile is { } profile)
+        {
+            var oldParent = ProfileTreeBuilder.NormalizeFolderPath(profile.FolderPath);
+            profile.FolderPath = destinationParentPath;
+            if (destinationParentPath.Length > 0)
+            {
+                _profileFolderPaths.Add(destinationParentPath);
+            }
+
+            sourceKey = ProfileTreeBuilder.GetBrokerOrderKey(profile.Id);
+            status = oldParent.Equals(destinationParentPath, StringComparison.OrdinalIgnoreCase)
+                ? $"Broker reordered: {profile.Name}"
+                : destinationParentPath.Length == 0
+                    ? $"Broker moved to root: {profile.Name}"
+                    : $"Broker moved to {destinationParentPath}: {profile.Name}";
+        }
+        else
+        {
+            return;
+        }
+
+        RebuildProfileTree();
+        var movedNode = RemoveProfileTreeNode(ProfileTree, sourceKey);
+        if (movedNode is null)
+        {
+            StatusMessage = "Unable to move the selected item.";
+            return;
+        }
+
+        var destination = GetProfileTreeChildren(destinationParentPath);
+        if (destination is null)
+        {
+            RebuildProfileTree();
+            StatusMessage = "Unable to find the target folder.";
+            return;
+        }
+
+        var insertIndex = destination.Count;
+        if (targetKey is not null && position != ProfileNodeDropPosition.Into)
+        {
+            var targetNode = destination.FirstOrDefault(node =>
+                ProfileTreeBuilder.GetOrderKey(node).Equals(targetKey, StringComparison.OrdinalIgnoreCase));
+            if (targetNode is not null)
+            {
+                insertIndex = destination.IndexOf(targetNode);
+                if (position == ProfileNodeDropPosition.After)
+                {
+                    insertIndex++;
+                }
+            }
+        }
+
+        destination.Insert(Math.Clamp(insertIndex, 0, destination.Count), movedNode);
+        CaptureProfileTreeOrder();
+        PersistProfileLibrary();
+        SelectedProfileNode = movedNode;
+        StatusMessage = status;
+    }
+
+    private bool TryMoveFolderData(
+        string oldPath,
+        string destinationParentPath,
+        out string newPath)
+    {
+        newPath = oldPath;
+        if (oldPath.Length == 0)
+        {
+            return false;
+        }
+
+        if (destinationParentPath.Equals(oldPath, StringComparison.OrdinalIgnoreCase)
+            || destinationParentPath.StartsWith(oldPath + "/", StringComparison.OrdinalIgnoreCase))
         {
             StatusMessage = "Cannot move a folder into itself.";
-            return;
+            return false;
         }
 
         var folderName = GetFolderName(oldPath);
-        var newPath = normalizedTarget.Length == 0 ? folderName : $"{normalizedTarget}/{folderName}";
+        newPath = destinationParentPath.Length == 0
+            ? folderName
+            : $"{destinationParentPath}/{folderName}";
         newPath = ProfileTreeBuilder.NormalizeFolderPath(newPath);
         if (newPath.Equals(oldPath, StringComparison.OrdinalIgnoreCase))
         {
-            StatusMessage = "Folder is already in that location.";
-            return;
+            return true;
         }
 
         if (FolderPathExistsOutside(oldPath, newPath))
         {
             StatusMessage = $"Folder already exists: {newPath}";
-            return;
+            return false;
         }
 
         RenameFolderPath(oldPath, newPath);
-        SaveProfiles(rebuildTree: true);
-        SelectedProfileNode = FindFolderNode(ProfileTree, newPath);
-        StatusMessage = $"Folder moved: {oldPath} -> {newPath}";
+        RemapProfileTreeOrder(oldPath, newPath);
+        return true;
     }
 
-    private static string GetDropTargetFolderPath(ProfileTreeNodeViewModel? target)
+    private static string GetDropDestinationParentPath(
+        ProfileTreeNodeViewModel? target,
+        ProfileNodeDropPosition position)
     {
         if (target is null)
         {
             return string.Empty;
         }
 
-        if (target.IsFolder)
+        if (position == ProfileNodeDropPosition.Into && target.IsFolder)
         {
-            return target.FullPath;
+            return ProfileTreeBuilder.NormalizeFolderPath(target.FullPath);
         }
 
-        return target.Profile?.FolderPath ?? string.Empty;
+        return target.IsFolder
+            ? GetParentFolderPath(target.FullPath)
+            : ProfileTreeBuilder.NormalizeFolderPath(target.Profile?.FolderPath);
     }
     private async Task ConnectAsync()
     {
@@ -1149,10 +1226,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var parentPath = GetTargetProfileFolderPath();
         var folderPath = BuildUniqueFolderPath(parentPath);
         _profileFolderPaths.Add(folderPath);
-        SelectedFolderPath = folderPath;
-        SelectedFolderName = GetFolderName(folderPath);
-        SaveProfiles(rebuildTree: false);
         RebuildProfileTree();
+        CaptureProfileTreeOrder();
+        PersistProfileLibrary();
         SelectedProfileNode = FindFolderNode(ProfileTree, folderPath);
         StatusMessage = $"Folder added: {folderPath}";
     }
@@ -1184,6 +1260,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (newPath.Equals(oldPath, StringComparison.OrdinalIgnoreCase))
         {
             SelectedFolderName = GetFolderName(oldPath);
+            PersistProfileLibrary();
+            StatusMessage = "Profiles saved";
             return;
         }
 
@@ -1195,6 +1273,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         RenameFolderPath(oldPath, newPath);
+        RemapProfileTreeOrder(oldPath, newPath);
         SaveProfiles(rebuildTree: true);
         SelectedFolderPath = newPath;
         SelectedFolderName = GetFolderName(newPath);
@@ -1216,6 +1295,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (!_confirmationService.Confirm(
+                "폴더 삭제 확인",
+                $"폴더 '{folderPath}'을(를) 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다."))
+        {
+            StatusMessage = "Folder deletion canceled.";
+            return;
+        }
+
         _profileFolderPaths.Remove(folderPath);
         SelectedProfileNode = null;
         SaveProfiles(rebuildTree: true);
@@ -1224,6 +1311,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void SaveProfiles()
     {
+        if (SelectedProfileNode?.IsFolder == true)
+        {
+            RenameFolder();
+            return;
+        }
+
         SaveProfiles(rebuildTree: true);
     }
 
@@ -1245,13 +1338,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             }
         }
 
-        _profileStore.Save(Profiles, _profileFolderPaths);
         if (rebuildTree)
         {
             RebuildProfileTree();
+            CaptureProfileTreeOrder();
             RestoreProfileTreeSelection(selectedProfileId, selectedFolderPath);
         }
 
+        PersistProfileLibrary();
         StatusMessage = "Profiles saved";
     }
 
@@ -1292,7 +1386,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void RebuildProfileTree()
     {
         ProfileTree.Clear();
-        foreach (var node in ProfileTreeBuilder.Build(Profiles, _profileFolderPaths))
+        foreach (var node in ProfileTreeBuilder.Build(Profiles, _profileFolderPaths, _profileTreeOrder))
         {
             ProfileTree.Add(node);
         }
@@ -1377,6 +1471,66 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 oldPrefix,
                 newPath);
         }
+    }
+
+    private void RemapProfileTreeOrder(string oldPath, string newPath)
+    {
+        var oldPrefix = oldPath + "/";
+        for (var index = 0; index < _profileTreeOrder.Count; index++)
+        {
+            var key = _profileTreeOrder[index];
+            if (!ProfileTreeBuilder.TryGetFolderPathFromOrderKey(key, out var folderPath))
+            {
+                continue;
+            }
+
+            var remapped = RemapFolderPath(folderPath, oldPath, oldPrefix, newPath);
+            _profileTreeOrder[index] = ProfileTreeBuilder.GetFolderOrderKey(remapped);
+        }
+    }
+
+    private void CaptureProfileTreeOrder()
+    {
+        _profileTreeOrder.Clear();
+        _profileTreeOrder.AddRange(ProfileTreeBuilder.CaptureOrder(ProfileTree));
+    }
+
+    private void PersistProfileLibrary()
+    {
+        _profileStore.Save(Profiles, _profileFolderPaths, _profileTreeOrder);
+    }
+
+    private ObservableCollection<ProfileTreeNodeViewModel>? GetProfileTreeChildren(string parentPath)
+    {
+        var normalized = ProfileTreeBuilder.NormalizeFolderPath(parentPath);
+        if (normalized.Length == 0)
+        {
+            return ProfileTree;
+        }
+
+        return FindFolderNode(ProfileTree, normalized)?.Children;
+    }
+
+    private static ProfileTreeNodeViewModel? RemoveProfileTreeNode(
+        ObservableCollection<ProfileTreeNodeViewModel> nodes,
+        string orderKey)
+    {
+        foreach (var node in nodes.ToArray())
+        {
+            if (ProfileTreeBuilder.GetOrderKey(node).Equals(orderKey, StringComparison.OrdinalIgnoreCase))
+            {
+                nodes.Remove(node);
+                return node;
+            }
+
+            var removed = RemoveProfileTreeNode(node.Children, orderKey);
+            if (removed is not null)
+            {
+                return removed;
+            }
+        }
+
+        return null;
     }
 
     private static string RemapFolderPath(string path, string oldPath, string oldPrefix, string newPath)
@@ -1499,6 +1653,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedProfile is null || Profiles.Count <= 1)
         {
+            return;
+        }
+
+        var profileToDelete = SelectedProfile;
+        if (!_confirmationService.Confirm(
+                "브로커 삭제 확인",
+                $"브로커 '{profileToDelete.Name}'을(를) 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다."))
+        {
+            StatusMessage = "Broker deletion canceled.";
             return;
         }
 

@@ -37,6 +37,36 @@ public sealed class ProfileTreeBuilderTests
         Assert.AreEqual("현장A/라인1", normalized);
     }
 
+    [TestMethod]
+    public void BuildAppliesPersistedOrderAcrossFoldersAndBrokers()
+    {
+        var brokerA = Profile("Broker A", string.Empty);
+        var brokerB = Profile("Broker B", string.Empty);
+        var roots = ProfileTreeBuilder.Build(
+            new[] { brokerA, brokerB },
+            new[] { "Folder A", "Folder B" },
+            new[]
+            {
+                ProfileTreeBuilder.GetBrokerOrderKey(brokerB.Id),
+                ProfileTreeBuilder.GetFolderOrderKey("Folder B"),
+                ProfileTreeBuilder.GetBrokerOrderKey(brokerA.Id),
+                ProfileTreeBuilder.GetFolderOrderKey("Folder A")
+            });
+
+        CollectionAssert.AreEqual(
+            new[] { "Broker B", "Folder B", "Broker A", "Folder A" },
+            roots.Select(x => x.Name).ToArray());
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                ProfileTreeBuilder.GetBrokerOrderKey(brokerB.Id),
+                ProfileTreeBuilder.GetFolderOrderKey("Folder B"),
+                ProfileTreeBuilder.GetBrokerOrderKey(brokerA.Id),
+                ProfileTreeBuilder.GetFolderOrderKey("Folder A")
+            },
+            ProfileTreeBuilder.CaptureOrder(roots).ToArray());
+    }
+
     private static BrokerProfile Profile(string name, string folderPath)
     {
         return new BrokerProfile

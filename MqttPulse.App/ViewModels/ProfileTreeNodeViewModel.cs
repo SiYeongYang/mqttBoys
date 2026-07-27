@@ -8,6 +8,7 @@ public sealed class ProfileTreeNodeViewModel : ObservableObject
 {
     private bool _isExpanded = true;
     private bool _isSelected;
+    private ProfileNodeDropPosition _dropPosition;
 
     public ProfileTreeNodeViewModel(string name, string fullPath, BrokerProfile? profile)
     {
@@ -34,6 +35,12 @@ public sealed class ProfileTreeNodeViewModel : ObservableObject
     {
         get => _isSelected;
         set => SetProperty(ref _isSelected, value);
+    }
+
+    public ProfileNodeDropPosition DropPosition
+    {
+        get => _dropPosition;
+        set => SetProperty(ref _dropPosition, value);
     }
 
     public ObservableCollection<ProfileTreeNodeViewModel> Children { get; } = new();

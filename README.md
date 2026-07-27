@@ -8,7 +8,7 @@
 
 ## 주요 기능
 
-- 브로커와 폴더를 계층형으로 관리
+- 브로커와 폴더를 계층형으로 관리하고 드래그로 이동 및 순서 변경
 - MQTT, WebSocket, TLS, 인증서 및 SSH 터널 연결
 - 일치 경로만 남기는 토픽 트리 검색과 Publish 토픽 자동완성
 - 최신 Value와 선택한 과거 메시지를 나란히 비교
@@ -23,7 +23,7 @@
 
 [Releases](../../releases)에서 최신 `mqttBoys.exe`를 내려받아 실행합니다. 별도 설치나 추가 런타임은 필요하지 않습니다.
 
-현재 버전: **0.0.11**
+현재 버전: **0.0.12**
 
 ## 지원 환경
 
@@ -46,6 +46,6 @@ dotnet publish .\MqttPulse.App\MqttPulse.App.csproj -c Release -r win-x64 --self
 `v*` 형식의 태그를 푸시하면 GitHub Actions가 테스트 후 Windows x64 단일 실행 파일을 빌드하여 Release에 첨부합니다. 릴리스 설명은 `CHANGELOG.md`의 같은 버전 항목을 사용하며, 해당 항목이 없으면 배포가 실패합니다.
 
 ```powershell
-git tag v0.0.11
-git push origin v0.0.11
+git tag v0.0.12
+git push origin v0.0.12
 ```

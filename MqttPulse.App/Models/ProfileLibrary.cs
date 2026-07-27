@@ -2,4 +2,5 @@ namespace MqttPulse.App.Models;
 
 public sealed record ProfileLibrary(
     IReadOnlyList<BrokerProfile> Profiles,
-    IReadOnlyList<string> FolderPaths);
+    IReadOnlyList<string> FolderPaths,
+    IReadOnlyList<string> TreeOrder);

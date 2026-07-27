@@ -37,7 +37,7 @@ public sealed class ProfileStore
     {
         if (!File.Exists(_path))
         {
-            return new ProfileLibrary(Array.Empty<BrokerProfile>(), Array.Empty<string>());
+            return EmptyLibrary();
         }
 
         try
@@ -48,7 +48,10 @@ public sealed class ProfileStore
             if (document.RootElement.ValueKind == JsonValueKind.Array)
             {
                 var legacyProfiles = JsonSerializer.Deserialize<List<BrokerProfile>>(json, JsonOptions) ?? new List<BrokerProfile>();
-                return new ProfileLibrary(legacyProfiles, FolderPathsFromProfiles(legacyProfiles));
+                return new ProfileLibrary(
+                    legacyProfiles,
+                    FolderPathsFromProfiles(legacyProfiles),
+                    Array.Empty<string>());
             }
 
             var dto = JsonSerializer.Deserialize<ProfileLibraryDto>(json, JsonOptions);
@@ -58,26 +61,36 @@ public sealed class ProfileStore
                 .Select(ProfileTreeBuilder.NormalizeFolderPath)
                 .Where(x => x.Length > 0)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var treeOrder = (dto?.TreeOrder ?? new List<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            return new ProfileLibrary(profiles, folders);
+            return new ProfileLibrary(profiles, folders, treeOrder);
         }
         catch (JsonException)
         {
-            return new ProfileLibrary(Array.Empty<BrokerProfile>(), Array.Empty<string>());
+            return EmptyLibrary();
         }
         catch (IOException)
         {
-            return new ProfileLibrary(Array.Empty<BrokerProfile>(), Array.Empty<string>());
+            return EmptyLibrary();
         }
     }
 
     public IReadOnlyList<BrokerProfile> Load() => LoadLibrary().Profiles;
 
-    public void Save(IEnumerable<BrokerProfile> profiles) => Save(profiles, Array.Empty<string>());
+    public void Save(IEnumerable<BrokerProfile> profiles) =>
+        Save(profiles, Array.Empty<string>(), Array.Empty<string>());
 
-    public void Save(IEnumerable<BrokerProfile> profiles, IEnumerable<string> folderPaths)
+    public void Save(IEnumerable<BrokerProfile> profiles, IEnumerable<string> folderPaths) =>
+        Save(profiles, folderPaths, Array.Empty<string>());
+
+    public void Save(
+        IEnumerable<BrokerProfile> profiles,
+        IEnumerable<string> folderPaths,
+        IEnumerable<string> treeOrder)
     {
         var snapshots = profiles.Select(x => x.Clone()).ToArray();
         var folders = folderPaths
@@ -85,13 +98,17 @@ public sealed class ProfileStore
             .Select(ProfileTreeBuilder.NormalizeFolderPath)
             .Where(x => x.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var order = treeOrder
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         var dto = new ProfileLibraryDto
         {
             Profiles = snapshots.ToList(),
-            FolderPaths = folders.ToList()
+            FolderPaths = folders.ToList(),
+            TreeOrder = order.ToList()
         };
 
         using var stream = File.Create(_path);
@@ -107,10 +124,20 @@ public sealed class ProfileStore
             .ToArray();
     }
 
+    private static ProfileLibrary EmptyLibrary()
+    {
+        return new ProfileLibrary(
+            Array.Empty<BrokerProfile>(),
+            Array.Empty<string>(),
+            Array.Empty<string>());
+    }
+
     private sealed class ProfileLibraryDto
     {
         public List<BrokerProfile> Profiles { get; set; } = new();
 
         public List<string> FolderPaths { get; set; } = new();
+
+        public List<string> TreeOrder { get; set; } = new();
     }
 }
