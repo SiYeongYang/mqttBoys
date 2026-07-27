@@ -49,6 +49,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string _selectedProfileFolderPath = string.Empty;
     private bool _isRefreshingFolderOptions;
     private string _valuePayloadText = string.Empty;
+    private string _previousValuePayloadText = string.Empty;
     private string _selectedPayloadText = string.Empty;
     private string _selectedTopicAveragePeriodText = "Avg -";
     private string _publishTopic = string.Empty;
@@ -82,7 +83,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private long _lastValueRefreshTimestamp;
     private long _lastHistoryRefreshTimestamp;
     private long _lastTopicVisualRefreshTimestamp;
-    private MqttMessageSnapshot? _pendingValueFormatMessage;
+    private ValueFormatRequest? _pendingValueFormatRequest;
     private int _valueFormatWorkerRunning;
     private volatile bool _isDisposed;
 
@@ -112,8 +113,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         FormatPublishJsonCommand = new RelayCommand(FormatPublishJson);
         CopyValueCommand = new RelayCommand(CopyValueToClipboard, () => !string.IsNullOrEmpty(ValuePayloadText));
         CopySelectedCommand = new RelayCommand(CopySelectedToClipboard, () => !string.IsNullOrEmpty(SelectedPayloadText));
-        ShowValueRawCommand = new RelayCommand(() => IsValueDiffMode = false);
-        ShowValueDiffCommand = new RelayCommand(() => IsValueDiffMode = true);
+        ShowValueRawCommand = new RelayCommand(ShowValueRaw);
+        ShowValueDiffCommand = new RelayCommand(ShowValueDiff);
         ToggleHistoryPauseCommand = new RelayCommand(ToggleHistoryPause);
         OpenConnectionManagerCommand = new AsyncRelayCommand(OpenConnectionManagerAsync, () => !IsBusy && !IsPeriodCheckRunning);
         CloseConnectionManagerCommand = new RelayCommand(CloseConnectionManager);
@@ -483,8 +484,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _isValueDiffMode, value))
             {
                 OnPropertyChanged(nameof(IsValueRawMode));
+                if (!value)
+                {
+                    PreviousValuePayloadText = string.Empty;
+                }
             }
         }
+    }
+
+    public string PreviousValuePayloadText
+    {
+        get => _previousValuePayloadText;
+        private set => SetProperty(ref _previousValuePayloadText, value);
     }
 
     public string SelectedPayloadText
@@ -759,7 +770,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _isDisposed = true;
-        Interlocked.Exchange(ref _pendingValueFormatMessage, null);
+        Interlocked.Exchange(ref _pendingValueFormatRequest, null);
         _periodCheckCancellation?.Cancel();
         _flushTimer.Stop();
         _mqttClient.Dispose();
@@ -1514,6 +1525,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SelectedTopicHistory.Clear();
         SelectedTopic = null;
         ValuePayloadText = string.Empty;
+        PreviousValuePayloadText = string.Empty;
         SelectedPayloadText = string.Empty;
         SelectedTopicAveragePeriodText = "Avg -";
         ReceivedMessages = 0;
@@ -1873,6 +1885,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (SelectedTopic is null)
         {
             ValuePayloadText = string.Empty;
+            PreviousValuePayloadText = string.Empty;
             SelectedHistoryItem = null;
             SelectedPayloadText = string.Empty;
             SelectedTopicAveragePeriodText = "Avg -";
@@ -1906,20 +1919,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void ShowValuePayload(MqttMessageSnapshot message)
+    private void ShowValuePayloads(
+        MqttMessageSnapshot message,
+        MqttMessageSnapshot? previousMessage)
     {
         ValuePayloadText = FormatPayloadForDetail(message);
+        PreviousValuePayloadText = IsValueDiffMode && previousMessage is not null
+            ? FormatPayloadForDetail(previousMessage)
+            : string.Empty;
     }
 
     private void RefreshSelectedTopicValue()
     {
         if (SelectedTopic?.LastMessage is { } message)
         {
-            ShowValuePayload(message);
+            ShowValuePayloads(message, SelectedTopic.PreviousMessage);
             return;
         }
 
         ValuePayloadText = string.Empty;
+        PreviousValuePayloadText = string.Empty;
     }
 
     private void QueueSelectedTopicValueRefresh()
@@ -1927,10 +1946,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (SelectedTopic?.LastMessage is not { } message)
         {
             ValuePayloadText = string.Empty;
+            PreviousValuePayloadText = string.Empty;
             return;
         }
 
-        Interlocked.Exchange(ref _pendingValueFormatMessage, message);
+        var request = new ValueFormatRequest(
+            message,
+            IsValueDiffMode ? SelectedTopic.PreviousMessage : null);
+        Interlocked.Exchange(ref _pendingValueFormatRequest, request);
         StartValueFormatWorker();
     }
 
@@ -1949,9 +1972,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             while (!_isDisposed
-                   && Interlocked.Exchange(ref _pendingValueFormatMessage, null) is { } message)
+                   && Interlocked.Exchange(ref _pendingValueFormatRequest, null) is { } request)
             {
-                var formatted = FormatPayloadForDetail(message);
+                var formatted = FormatPayloadForDetail(request.Message);
+                var previousFormatted = request.PreviousMessage is null
+                    ? string.Empty
+                    : FormatPayloadForDetail(request.PreviousMessage);
                 if (_isDisposed)
                 {
                     return;
@@ -1962,9 +1988,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     if (!_isDisposed
                         && !FreezeDetail
                         && !HistoryPaused
-                        && ReferenceEquals(SelectedTopic?.LastMessage, message))
+                        && ReferenceEquals(SelectedTopic?.LastMessage, request.Message))
                     {
                         ValuePayloadText = formatted;
+                        PreviousValuePayloadText = IsValueDiffMode
+                            ? previousFormatted
+                            : string.Empty;
                     }
                 }, DispatcherPriority.DataBind);
             }
@@ -1980,11 +2009,22 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         finally
         {
             Interlocked.Exchange(ref _valueFormatWorkerRunning, 0);
-            if (!_isDisposed && Volatile.Read(ref _pendingValueFormatMessage) is not null)
+            if (!_isDisposed && Volatile.Read(ref _pendingValueFormatRequest) is not null)
             {
                 StartValueFormatWorker();
             }
         }
+    }
+
+    private void ShowValueRaw()
+    {
+        IsValueDiffMode = false;
+    }
+
+    private void ShowValueDiff()
+    {
+        IsValueDiffMode = true;
+        QueueSelectedTopicValueRefresh();
     }
 
     private void ClearPendingMessages()
@@ -2168,5 +2208,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RenameFolderCommand.RaiseCanExecuteChanged();
         DeleteFolderCommand.RaiseCanExecuteChanged();
     }
+
+    private sealed record ValueFormatRequest(
+        MqttMessageSnapshot Message,
+        MqttMessageSnapshot? PreviousMessage);
 
 }

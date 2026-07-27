@@ -239,7 +239,35 @@ public sealed class MainLayoutTests
             Assert.IsTrue(paragraphs.Any(paragraph => paragraph.Background != Brushes.Transparent));
             StringAssert.Contains(text, "-   \"value\": 1");
             StringAssert.Contains(text, "+   \"value\": 2");
-            StringAssert.Contains(text, "Comparing with selected message: + 1 lines, - 1 lines");
+            StringAssert.Contains(text, "Comparing with previous message: + 1 lines, - 1 lines");
+        });
+    }
+
+    [TestMethod]
+    public void DiffModeUsesPreviousMessageAndDoesNotDependOnSelectedHistory()
+    {
+        RunInWindow(window =>
+        {
+            var viewModel = (MainViewModel)window.DataContext;
+            var topic = new TopicViewModel("device", "factory/line/device", historyCapacity: 10);
+            var oldest = Message("{\"value\":1}", "2026-07-27T12:00:00+09:00");
+            var previous = Message("{\"value\":2}", "2026-07-27T12:00:01+09:00");
+            var latest = Message("{\"value\":3}", "2026-07-27T12:00:02+09:00");
+            topic.Record(oldest, isLeaf: true, leafTopicWasNew: true);
+            topic.Record(previous, isLeaf: true, leafTopicWasNew: false);
+            topic.Record(latest, isLeaf: true, leafTopicWasNew: false);
+
+            viewModel.SelectedTopic = topic;
+            viewModel.SelectedHistoryItem = viewModel.SelectedTopicHistory.Single(
+                item => ReferenceEquals(item.Message, oldest));
+            viewModel.ShowValueDiffCommand.Execute(null);
+            PumpDispatcher(TimeSpan.FromMilliseconds(350));
+
+            var diff = (JsonDiffViewer)window.FindName("ValueDiffViewer");
+            StringAssert.Contains(diff.BaselineText, "\"value\": 2");
+            StringAssert.Contains(diff.CurrentText, "\"value\": 3");
+            StringAssert.Contains(viewModel.SelectedPayloadText, "\"value\": 1");
+            Assert.IsFalse(diff.BaselineText.Contains("\"value\": 1", StringComparison.Ordinal));
         });
     }
 
@@ -295,6 +323,16 @@ public sealed class MainLayoutTests
         };
         timer.Start();
         Dispatcher.PushFrame(frame);
+    }
+
+    private static MqttMessageSnapshot Message(string payload, string receivedAt)
+    {
+        return new MqttMessageSnapshot(
+            "factory/line/device",
+            payload,
+            DateTimeOffset.Parse(receivedAt),
+            Qos: 0,
+            Retain: false);
     }
 
     private static void RunInWindow(Action<MainWindow> test)

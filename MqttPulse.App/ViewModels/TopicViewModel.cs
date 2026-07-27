@@ -51,6 +51,8 @@ public sealed class TopicViewModel : ObservableObject
 
     public MqttMessageSnapshot? LastMessage { get; private set; }
 
+    public MqttMessageSnapshot? PreviousMessage { get; private set; }
+
     public string DisplayName => Name;
 
     public string DetailText => IsLeafTopic
@@ -73,6 +75,7 @@ public sealed class TopicViewModel : ObservableObject
     public void Record(MqttMessageSnapshot message, bool isLeaf, bool leafTopicWasNew, bool notify = true)
     {
         _messageCount++;
+        PreviousMessage = LastMessage;
         LastMessage = message;
         if (leafTopicWasNew)
         {

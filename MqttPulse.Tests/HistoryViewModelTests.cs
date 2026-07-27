@@ -106,7 +106,7 @@ public sealed class HistoryViewModelTests
     }
 
     [TestMethod]
-    public void ValueDiffModeComparesSelectedHistoryAndResetsForAnotherTopic()
+    public void ValueDiffModeResetsForAnotherTopic()
     {
         using var viewModel = new MainViewModel();
         var first = new TopicViewModel("first", "Edge/data/first", historyCapacity: 10);

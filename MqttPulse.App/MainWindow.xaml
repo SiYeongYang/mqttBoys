@@ -771,7 +771,7 @@
                                                      Command="{Binding ShowValueDiffCommand}"
                                                      Style="{StaticResource ViewModeButtonStyle}"
                                                      Margin="3,0,0,0"
-                                                     ToolTip="Compare Value with the selected History message" />
+                                                     ToolTip="Compare Value with the immediately previous message" />
                                     </StackPanel>
                                 </DockPanel>
                                 <Grid Grid.Row="1">
@@ -788,7 +788,7 @@
                                                                 Background="{StaticResource CodeBackgroundBrush}"
                                                                 ToolTip="Shift + 마우스 휠로 좌우 이동" />
                                     <controls:JsonDiffViewer x:Name="ValueDiffViewer"
-                                                             BaselineText="{Binding SelectedPayloadText, Mode=OneWay}"
+                                                             BaselineText="{Binding PreviousValuePayloadText, Mode=OneWay}"
                                                              CurrentText="{Binding ValuePayloadText, Mode=OneWay}"
                                                              IsActive="{Binding IsValueDiffMode, Mode=OneWay}"
                                                              Visibility="{Binding IsValueDiffMode, Converter={StaticResource BooleanToVisibilityConverter}}"

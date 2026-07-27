@@ -1,79 +1,92 @@
-# Changelog
+# 변경 이력
+
+## [0.0.11] - 2026-07-27
+
+### 수정
+
+- Value의 Diff가 선택한 History가 아니라 같은 토픽의 최신 메시지와 바로 직전 메시지를 실시간으로 비교하도록 바로잡았습니다.
+- History에서 선택한 메시지는 Selected에만 유지되며 Diff 비교 기준에 영향을 주지 않도록 분리했습니다.
+- 토픽을 변경하면 기존처럼 Raw 모드로 돌아가고 새 토픽의 메시지 쌍을 잘못 비교하지 않도록 했습니다.
+
+### 변경
+
+- Raw 모드에서는 직전 payload를 추가 포맷하지 않고, Diff 모드에서만 직전값을 처리하도록 최적화했습니다.
+- v0.0.5 이후 GitHub Release의 상세 변경사항을 모두 한글로 작성하도록 변경했습니다.
 
 ## [0.0.10] - 2026-07-27
 
-### Added
+### 추가
 
-- Added Raw and Diff modes to Value. Diff compares the latest Value with the History message shown in Selected.
-- Added per-field chart actions to Selected for numeric and boolean JSON values.
-- Added detailed release notes sourced from this changelog.
+- Value에 Raw와 Diff 보기 모드를 추가했습니다.
+- Selected의 숫자 및 불리언 JSON 값에도 필드별 차트 추가 버튼을 제공했습니다.
+- 이 변경 이력에서 GitHub Release 설명을 자동으로 가져오는 기능을 추가했습니다.
 
-### Changed
+### 변경
 
-- Increased normal and hover chart point sizes for easier inspection.
-- Moved JSON comparison work off the UI thread and bounded large comparisons to protect responsiveness.
-- Added repository safeguards for local profiles, credentials, certificates, and private keys.
+- 차트의 기본 데이터 점과 마우스 호버 데이터 점을 키워 선택하기 쉽게 개선했습니다.
+- JSON 비교를 UI 스레드 밖에서 처리하고 대용량 비교 연산을 제한해 응답성을 보호했습니다.
+- 로컬 프로필, 인증정보, 인증서 및 개인키가 저장소에 포함되지 않도록 보호 규칙을 추가했습니다.
 
 ## [0.0.9] - 2026-07-23
 
-### Added
+### 추가
 
-- Added a separate live chart window that supports multiple numeric and boolean series.
-- Added per-series pause, resume, remove, latest-value display, and point hover details.
-- Added clickable chart actions beside compatible fields in Value.
-- Added a collapsible JSON structure tree to JSON Formatter.
+- 숫자와 불리언 값을 여러 개 동시에 볼 수 있는 별도 실시간 차트 창을 추가했습니다.
+- 차트별 일시정지, 재개, 삭제, 최신값 표시 및 데이터 점 호버 정보를 추가했습니다.
+- Value의 지원 필드 옆에서 차트를 바로 추가할 수 있는 버튼을 제공했습니다.
+- JSON Formatter에 접고 펼칠 수 있는 JSON 구조 트리를 추가했습니다.
 
-### Changed
+### 변경
 
-- Reworked JSON rendering and scalar extraction for structured inspection.
-- Improved chart window wrapping and sizing at desktop and laptop resolutions.
+- 구조화된 데이터 확인에 맞게 JSON 렌더링과 값 추출 방식을 개선했습니다.
+- 데스크톱과 노트북 해상도에서 여러 차트가 자연스럽게 배치되도록 개선했습니다.
 
 ## [0.0.8] - 2026-07-23
 
-### Added
+### 추가
 
-- Added JSON Formatter with format, compact, validate, copy, and clear actions.
-- Added the first scalar history chart workflow for numeric and boolean payload fields.
+- 포맷, 압축, 검증, 복사 및 초기화를 지원하는 JSON Formatter를 추가했습니다.
+- 숫자와 불리언 payload 값을 확인하는 초기 차트 기능을 추가했습니다.
 
-### Changed
+### 변경
 
-- Batched topic count and preview notifications to reduce UI work under high message rates.
-- Reduced repeated payload formatting and tightened live update scheduling.
+- 메시지가 빠르게 들어올 때 토픽 개수와 미리보기 알림을 묶어서 처리하도록 변경했습니다.
+- 중복 payload 포맷 작업을 줄이고 실시간 화면 갱신 주기를 최적화했습니다.
 
 ## [0.0.7] - 2026-07-23
 
-### Changed
+### 변경
 
-- Refined the inspection layout so Value, Selected, History, and Publish remain visible together.
-- Moved pause control into Value and unified Value and History pause behavior.
-- Reduced header height and visual noise, and reorganized broker status, search, and tools.
-- Improved thin scrollbars, splitters, and nested wheel handling.
-- Reduced Value refresh latency and flicker during rapid updates.
+- Value, Selected, History 및 Publish를 한 화면에서 확인하기 쉽도록 검사 화면을 재구성했습니다.
+- 일시정지 버튼을 Value 영역으로 옮기고 Value와 History가 함께 멈추도록 통합했습니다.
+- 헤더 높이와 불필요한 표시를 줄이고 브로커 상태, 검색 및 Tools 위치를 정리했습니다.
+- 스크롤바, 구분선 및 payload 내부 마우스 휠 동작을 개선했습니다.
+- 빠르게 들어오는 Value의 화면 반영 지연과 깜빡임을 줄였습니다.
 
 ## [0.0.6] - 2026-07-23
 
-### Added
+### 추가
 
-- Added topic search that keeps only matching topic paths.
-- Added Publish topic autocomplete from observed topics.
+- 검색어와 일치하는 경로만 남기는 토픽 검색 기능을 추가했습니다.
+- 수집된 토픽을 이용한 Publish 토픽 자동완성을 추가했습니다.
 
-### Changed
+### 변경
 
-- Narrowed and virtualized topic browsing for faster navigation.
-- Batched high-rate topic visual updates while keeping Value and History responsive.
-- Reduced payload retention and formatting overhead for lower memory use.
+- 토픽 영역을 줄이고 가상화를 적용해 탐색 속도를 개선했습니다.
+- 고속 메시지에서도 Value와 History가 원활하도록 토픽 표시 갱신을 묶어서 처리했습니다.
+- payload 보관 및 포맷 비용을 줄여 메모리 사용량을 개선했습니다.
 
 ## [0.0.5] - 2026-07-23
 
-### Added
+### 추가
 
-- Added configurable period checks for 10 seconds, 30 seconds, 1 minute, and custom durations.
-- Added period-check cancellation with a result calculated from samples collected before cancellation.
-- Added in-session period-check history.
+- 10초, 30초, 1분 및 직접 입력 시간을 지원하는 주기 체크 기능을 추가했습니다.
+- 주기 체크를 중단해도 중단 시점까지 수집한 표본으로 결과를 계산하도록 했습니다.
+- 앱을 종료할 때까지 유지되는 주기 체크 결과 이력을 추가했습니다.
 
-### Changed
+### 변경
 
-- Kept the active broker connection running while Connections is open.
-- Reworked the main inspection layout with Value and Selected side by side.
-- Added Shift+wheel horizontal scrolling and isolated nested payload scrolling.
-- Improved live payload rendering and scroll-position preservation.
+- Connections 창을 열어도 현재 브로커 연결과 수집이 유지되도록 변경했습니다.
+- Value와 Selected를 나란히 배치하도록 메인 검사 화면을 재구성했습니다.
+- Shift+마우스 휠 좌우 스크롤과 payload 영역별 독립 스크롤을 추가했습니다.
+- 실시간 payload 렌더링과 스크롤 위치 보존을 개선했습니다.

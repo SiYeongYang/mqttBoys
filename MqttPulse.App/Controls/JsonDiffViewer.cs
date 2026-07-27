@@ -45,7 +45,7 @@ public sealed class JsonDiffViewer : RichTextBox
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
         Document = CreateDocument();
-        RenderMessage("Select a History message to compare.");
+        RenderMessage("Waiting for the previous message.");
     }
 
     public string BaselineText
@@ -116,7 +116,7 @@ public sealed class JsonDiffViewer : RichTextBox
 
         if (string.IsNullOrEmpty(BaselineText))
         {
-            RenderMessage("Select a History message to compare.");
+            RenderMessage("Waiting for the previous message.");
             return;
         }
 
@@ -163,7 +163,7 @@ public sealed class JsonDiffViewer : RichTextBox
             FontSize = FontSize,
             TextAlignment = TextAlignment.Left
         };
-        summary.Inlines.Add(new Run("Comparing with selected message: ") { Foreground = MutedBrush });
+        summary.Inlines.Add(new Run("Comparing with previous message: ") { Foreground = MutedBrush });
         summary.Inlines.Add(new Run($"+ {result.AddedLineCount} lines") { Foreground = AddedBrush });
         summary.Inlines.Add(new Run(", "));
         summary.Inlines.Add(new Run($"- {result.RemovedLineCount} lines") { Foreground = RemovedBrush });

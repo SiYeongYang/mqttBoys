@@ -13,7 +13,7 @@
 - 일치 경로만 남기는 토픽 트리 검색과 Publish 토픽 자동완성
 - 최신 Value와 선택한 과거 메시지를 나란히 비교
 - Value와 Selected의 숫자/불리언 필드를 바로 선택해 별도 창에서 여러 실시간 차트로 확인
-- 최신 Value와 선택한 History 메시지의 Raw/Diff 비교
+- 최신 Value와 같은 토픽의 바로 직전 메시지를 실시간 Raw/Diff 비교
 - 토픽별 제한된 히스토리와 평균 전송 주기 표시
 - 10초, 30초, 1분 및 직접 입력을 지원하는 정밀 주기 측정과 중단 결과 기록
 - JSON 자동 정리, 접을 수 있는 구조 트리, 구문 강조, 복사 및 Publish
@@ -23,7 +23,7 @@
 
 [Releases](../../releases)에서 최신 `mqttBoys.exe`를 내려받아 실행합니다. 별도 설치나 추가 런타임은 필요하지 않습니다.
 
-현재 버전: **0.0.10**
+현재 버전: **0.0.11**
 
 ## 지원 환경
 
@@ -46,6 +46,6 @@ dotnet publish .\MqttPulse.App\MqttPulse.App.csproj -c Release -r win-x64 --self
 `v*` 형식의 태그를 푸시하면 GitHub Actions가 테스트 후 Windows x64 단일 실행 파일을 빌드하여 Release에 첨부합니다. 릴리스 설명은 `CHANGELOG.md`의 같은 버전 항목을 사용하며, 해당 항목이 없으면 배포가 실패합니다.
 
 ```powershell
-git tag v0.0.10
-git push origin v0.0.10
+git tag v0.0.11
+git push origin v0.0.11
 ```

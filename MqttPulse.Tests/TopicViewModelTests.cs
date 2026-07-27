@@ -72,6 +72,22 @@ public sealed class TopicViewModelTests
         Assert.IsFalse(leaf.LastPayloadPreview.Contains("old", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public void TopicKeepsTheImmediatelyPreviousMessageForLiveDiff()
+    {
+        var leaf = new TopicViewModel("device", "Edge/data/device", historyCapacity: 10);
+        var first = Message("Edge/data/device", "{\"value\":1}");
+        var second = Message("Edge/data/device", "{\"value\":2}");
+        var third = Message("Edge/data/device", "{\"value\":3}");
+
+        leaf.Record(first, isLeaf: true, leafTopicWasNew: true);
+        leaf.Record(second, isLeaf: true, leafTopicWasNew: false);
+        leaf.Record(third, isLeaf: true, leafTopicWasNew: false);
+
+        Assert.AreSame(third, leaf.LastMessage);
+        Assert.AreSame(second, leaf.PreviousMessage);
+    }
+
     private static MqttMessageSnapshot Message(string topic, string payload) =>
         new(topic, payload, DateTimeOffset.Parse("2026-06-18T20:11:35+09:00"), Qos: 0, Retain: false);
 }
