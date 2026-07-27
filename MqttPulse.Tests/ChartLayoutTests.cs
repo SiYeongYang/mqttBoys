@@ -33,10 +33,10 @@ public sealed class ChartLayoutTests
             try
             {
                 window.ViewModel.AddChart(
-                    "VTS/EDGE_DATA/P_FA_032",
+                    "factory/line/device-032",
                     new JsonScalarMetric("/value", "$.value", JsonScalarKind.Number));
                 window.ViewModel.AddChart(
-                    "VTS/EDGE_DATA/P_FA_032",
+                    "factory/line/device-032",
                     new JsonScalarMetric("/running", "$.running", JsonScalarKind.Boolean));
                 window.Show();
 

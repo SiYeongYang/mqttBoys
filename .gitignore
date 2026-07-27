@@ -17,6 +17,17 @@ TestResults/
 .impeccable/
 work/
 
+# Local connection data, credentials, and certificates
+profiles.json
+**/profiles.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+
 # OS files
 Thumbs.db
 Desktop.ini

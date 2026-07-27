@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
+using System.Windows.Media;
 using System.Windows.Threading;
 using MqttPulse.App;
 using MqttPulse.App.Controls;
@@ -61,7 +62,7 @@ public sealed class MainLayoutTests
             var input = (TextBox)window.FindName("PublishTopicInput");
             var popup = (Popup)window.FindName("PublishTopicPopup");
             var list = (ListBox)window.FindName("PublishTopicSuggestionList");
-            const string topic = "VTS/EDGE_DATA/P_FA_030";
+            const string topic = "factory/line/device-030";
 
             viewModel.PublishTopicSuggestions.Add(topic);
             popup.IsOpen = true;
@@ -158,7 +159,7 @@ public sealed class MainLayoutTests
             var broker = new ProfileTreeNodeViewModel(
                 "Edge broker",
                 "Factory",
-                new BrokerProfile { Host = "172.16.1.224", Port = 1883 });
+                new BrokerProfile { Host = "192.0.2.10", Port = 1883 });
 
             var folderPresenter = RealizeTemplate(template, folder);
             var brokerPresenter = RealizeTemplate(template, broker);
@@ -175,22 +176,70 @@ public sealed class MainLayoutTests
     }
 
     [TestMethod]
-    public void ValueViewerExposesChartActionsBesideNumericAndBooleanRows()
+    public void ValueAndSelectedViewersExposeChartActionsBesideNumericAndBooleanRows()
     {
         RunInWindow(window =>
         {
-            var viewer = (JsonPayloadViewer)window.FindName("ValuePayloadViewer");
-            viewer.Text = "{\"value\":42,\"running\":true,\"label\":\"line\"}";
-            viewer.UpdateLayout();
+            foreach (var name in new[] { "ValuePayloadViewer", "SelectedPayloadViewer" })
+            {
+                var viewer = (JsonPayloadViewer)window.FindName(name);
+                viewer.Text = "{\"value\":42,\"running\":true,\"label\":\"line\"}";
+                viewer.UpdateLayout();
 
-            var paragraph = viewer.Document.Blocks.OfType<Paragraph>().Single();
-            var actions = paragraph.Inlines.OfType<Hyperlink>().ToArray();
-            var metrics = actions.Select(action => (JsonScalarMetric)action.Tag).ToArray();
+                var paragraph = viewer.Document.Blocks.OfType<Paragraph>().Single();
+                var actions = paragraph.Inlines.OfType<Hyperlink>().ToArray();
+                var metrics = actions.Select(action => (JsonScalarMetric)action.Tag).ToArray();
 
-            Assert.HasCount(2, actions);
-            CollectionAssert.AreEquivalent(
-                new[] { "$.value", "$.running" },
-                metrics.Select(metric => metric.DisplayPath).ToArray());
+                Assert.IsTrue(viewer.EnableChartActions);
+                Assert.HasCount(2, actions);
+                CollectionAssert.AreEquivalent(
+                    new[] { "$.value", "$.running" },
+                    metrics.Select(metric => metric.DisplayPath).ToArray());
+            }
+        });
+    }
+
+    [TestMethod]
+    public void ValueModeButtonsSwitchBetweenRawAndDiffViewers()
+    {
+        RunInWindow(window =>
+        {
+            var viewModel = (MainViewModel)window.DataContext;
+            var raw = (JsonPayloadViewer)window.FindName("ValuePayloadViewer");
+            var diff = (JsonDiffViewer)window.FindName("ValueDiffViewer");
+
+            Assert.IsTrue(viewModel.IsValueRawMode);
+            Assert.AreEqual(Visibility.Visible, raw.Visibility);
+            Assert.AreEqual(Visibility.Collapsed, diff.Visibility);
+
+            viewModel.ShowValueDiffCommand.Execute(null);
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.DataBind);
+
+            Assert.AreEqual(Visibility.Collapsed, raw.Visibility);
+            Assert.AreEqual(Visibility.Visible, diff.Visibility);
+            Assert.IsTrue(diff.IsActive);
+        });
+    }
+
+    [TestMethod]
+    public void DiffViewerRendersAddedRemovedLinesAndComparisonSummary()
+    {
+        RunInWindow(window =>
+        {
+            var viewModel = (MainViewModel)window.DataContext;
+            var diff = (JsonDiffViewer)window.FindName("ValueDiffViewer");
+            diff.BaselineText = "{\n  \"value\": 1\n}";
+            diff.CurrentText = "{\n  \"value\": 2\n}";
+            viewModel.ShowValueDiffCommand.Execute(null);
+
+            PumpDispatcher(TimeSpan.FromMilliseconds(250));
+
+            var paragraphs = diff.Document.Blocks.OfType<Paragraph>().ToArray();
+            var text = new TextRange(diff.Document.ContentStart, diff.Document.ContentEnd).Text;
+            Assert.IsTrue(paragraphs.Any(paragraph => paragraph.Background != Brushes.Transparent));
+            StringAssert.Contains(text, "-   \"value\": 1");
+            StringAssert.Contains(text, "+   \"value\": 2");
+            StringAssert.Contains(text, "Comparing with selected message: + 1 lines, - 1 lines");
         });
     }
 
@@ -230,6 +279,22 @@ public sealed class MainLayoutTests
         presenter.Arrange(new Rect(0, 0, 280, 80));
         presenter.UpdateLayout();
         return presenter;
+    }
+
+    private static void PumpDispatcher(TimeSpan duration)
+    {
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = duration
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            frame.Continue = false;
+        };
+        timer.Start();
+        Dispatcher.PushFrame(frame);
     }
 
     private static void RunInWindow(Action<MainWindow> test)

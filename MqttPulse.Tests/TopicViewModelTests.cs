@@ -21,11 +21,11 @@ public sealed class TopicViewModelTests
     [TestMethod]
     public void LeafTopicShowsPayloadPreviewAfterEqualsSign()
     {
-        var leaf = new TopicViewModel("UVCE-EWLK_01-001", "Edge/data/UVCE-EWLK_01-001", historyCapacity: 10);
+        var leaf = new TopicViewModel("device-01", "Edge/data/device-01", historyCapacity: 10);
 
-        leaf.Record(Message("Edge/data/UVCE-EWLK_01-001", "{\"MessageId\":\"abc\",\"Payload\":[1,2,3]}"), isLeaf: true, leafTopicWasNew: true);
+        leaf.Record(Message("Edge/data/device-01", "{\"MessageId\":\"abc\",\"Payload\":[1,2,3]}"), isLeaf: true, leafTopicWasNew: true);
 
-        Assert.AreEqual("UVCE-EWLK_01-001", leaf.DisplayName);
+        Assert.AreEqual("device-01", leaf.DisplayName);
         StringAssert.StartsWith(leaf.DetailText, "= {\"MessageId\":\"abc\"");
     }
 

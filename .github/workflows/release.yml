@@ -48,9 +48,26 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $asset = ".\publish\mqttBoys.exe"
+          $version = $tag.TrimStart("v")
+          $changelog = Get-Content .\CHANGELOG.md -Raw
+          $escapedVersion = [regex]::Escape($version)
+          $pattern = "(?ms)^## \[$escapedVersion\][^\r\n]*\r?\n(?<body>.*?)(?=^## \[|\z)"
+          $match = [regex]::Match($changelog, $pattern)
+          if (-not $match.Success) {
+            throw "CHANGELOG.md does not contain release notes for $tag."
+          }
+
+          $notesPath = Join-Path $env:RUNNER_TEMP "mqttBoys-release-notes.md"
+          $notes = $match.Groups["body"].Value.Trim()
+          [System.IO.File]::WriteAllText(
+            $notesPath,
+            $notes,
+            [System.Text.UTF8Encoding]::new($false))
+
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $asset --clobber --repo $env:GITHUB_REPOSITORY
+            gh release edit $tag --notes-file $notesPath --title "mqttBoys $tag" --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $tag $asset --verify-tag --generate-notes --title "mqttBoys $tag" --repo $env:GITHUB_REPOSITORY
+            gh release create $tag $asset --verify-tag --notes-file $notesPath --title "mqttBoys $tag" --repo $env:GITHUB_REPOSITORY
           }

@@ -31,7 +31,7 @@ public sealed class PeriodTopicAutocompleteTests
                     var input = (TextBox)window.FindName("PeriodTopicInput");
                     var popup = (Popup)window.FindName("PeriodTopicPopup");
                     var list = (ListBox)window.FindName("PeriodTopicSuggestionList");
-                    const string topic = "VTS/EDGE_DATA/M_001";
+                    const string topic = "factory/line/motor-001";
 
                     viewModel.PeriodCheckTopicSuggestions.Add(topic);
                     popup.IsOpen = true;

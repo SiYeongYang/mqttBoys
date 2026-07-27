@@ -29,7 +29,7 @@ public sealed class CoreModelTests
         tree.Ingest(Message("XR/data/device-a/STATE", "{\"RUN\":true}"));
         tree.Ingest(Message("XR/data/device-a/STATE", "{\"RUN\":false}"));
         tree.Ingest(Message("XR/data/device-a/HEALTH", "ok"));
-        tree.Ingest(Message("Edge/data/UVCE-EWLK_01-001", "edge"));
+        tree.Ingest(Message("Edge/data/device-01", "edge"));
 
         var xr = tree.Root.Children.Single(x => x.Name == "XR");
         var state = tree.GetTopic("XR/data/device-a/STATE");
@@ -48,11 +48,11 @@ public sealed class CoreModelTests
         var tree = new TopicTreeIndex(maxHistoryPerTopic: 5);
 
         tree.Ingest(Message("XR/data/device-a/STATE", "1"));
-        tree.Ingest(Message("Edge/health/UVCE-EWLK_01-001", "2"));
+        tree.Ingest(Message("Edge/health/device-01", "2"));
 
-        var matches = tree.SearchTopics("uvce-ewlk").Select(x => x.FullTopic).ToArray();
+        var matches = tree.SearchTopics("device-01").Select(x => x.FullTopic).ToArray();
 
-        CollectionAssert.AreEqual(new[] { "Edge/health/UVCE-EWLK_01-001" }, matches);
+        CollectionAssert.AreEqual(new[] { "Edge/health/device-01" }, matches);
     }
 
     [TestMethod]

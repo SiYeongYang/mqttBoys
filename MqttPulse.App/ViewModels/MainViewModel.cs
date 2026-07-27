@@ -63,6 +63,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isJsonFormatterOpen;
     private bool _topicListsNeedRefresh;
     private bool _historyPaused;
+    private bool _isValueDiffMode;
     private bool _freezeDetail;
     private bool _followLatest = true;
     private string _statusMessage = "Ready";
@@ -111,6 +112,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         FormatPublishJsonCommand = new RelayCommand(FormatPublishJson);
         CopyValueCommand = new RelayCommand(CopyValueToClipboard, () => !string.IsNullOrEmpty(ValuePayloadText));
         CopySelectedCommand = new RelayCommand(CopySelectedToClipboard, () => !string.IsNullOrEmpty(SelectedPayloadText));
+        ShowValueRawCommand = new RelayCommand(() => IsValueDiffMode = false);
+        ShowValueDiffCommand = new RelayCommand(() => IsValueDiffMode = true);
         ToggleHistoryPauseCommand = new RelayCommand(ToggleHistoryPause);
         OpenConnectionManagerCommand = new AsyncRelayCommand(OpenConnectionManagerAsync, () => !IsBusy && !IsPeriodCheckRunning);
         CloseConnectionManagerCommand = new RelayCommand(CloseConnectionManager);
@@ -194,6 +197,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand CopyValueCommand { get; }
 
     public RelayCommand CopySelectedCommand { get; }
+
+    public RelayCommand ShowValueRawCommand { get; }
+
+    public RelayCommand ShowValueDiffCommand { get; }
 
     public RelayCommand ToggleHistoryPauseCommand { get; }
 
@@ -314,6 +321,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _selectedTopic, value))
             {
                 HistoryPaused = false;
+                IsValueDiffMode = false;
                 SelectedHistoryItem = null;
                 PublishTopic = value?.FullTopic ?? string.Empty;
                 _lastValueRefreshTimestamp = 0;
@@ -461,6 +469,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _valuePayloadText, value))
             {
                 CopyValueCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool IsValueRawMode => !IsValueDiffMode;
+
+    public bool IsValueDiffMode
+    {
+        get => _isValueDiffMode;
+        private set
+        {
+            if (SetProperty(ref _isValueDiffMode, value))
+            {
+                OnPropertyChanged(nameof(IsValueRawMode));
             }
         }
     }

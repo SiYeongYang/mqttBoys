@@ -10,6 +10,8 @@ namespace MqttPulse.App.Controls;
 
 public sealed class LiveScalarChart : FrameworkElement
 {
+    private const double PointRadius = 4.25;
+    private const double HoverPointRadius = 6.5;
     private static readonly Brush GridBrush = FrozenBrush("#DCE5E3");
     private static readonly Brush AxisTextBrush = FrozenBrush("#536763");
     private static readonly Brush HoverBrush = FrozenBrush("#3F5652");
@@ -108,8 +110,8 @@ public sealed class LiveScalarChart : FrameworkElement
                 HoverPen,
                 new Point(hoverPoint.X, chartRect.Top),
                 new Point(hoverPoint.X, chartRect.Bottom));
-            drawingContext.DrawEllipse(SeriesBrush, null, hoverPoint, 5, 5);
-            drawingContext.DrawEllipse(null, WhiteOutlinePen, hoverPoint, 5, 5);
+            drawingContext.DrawEllipse(SeriesBrush, null, hoverPoint, HoverPointRadius, HoverPointRadius);
+            drawingContext.DrawEllipse(null, WhiteOutlinePen, hoverPoint, HoverPointRadius, HoverPointRadius);
         }
     }
 
@@ -224,7 +226,7 @@ public sealed class LiveScalarChart : FrameworkElement
         foreach (var point in points.Select((_, index) =>
                      ToPoint(chartRect, points, index, minimum, maximum)))
         {
-            drawingContext.DrawEllipse(SeriesBrush, null, point, 2.75, 2.75);
+            drawingContext.DrawEllipse(SeriesBrush, null, point, PointRadius, PointRadius);
         }
     }
 

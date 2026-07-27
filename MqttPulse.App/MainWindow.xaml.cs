@@ -57,7 +57,7 @@ public partial class MainWindow : Window
         ShowChartWindow();
     }
 
-    private void ValuePayloadViewer_ChartRequested(
+    private void PayloadViewer_ChartRequested(
         object? sender,
         JsonChartRequestedEventArgs e)
     {

@@ -19,7 +19,7 @@ public sealed class LiveUpdatePerformanceTests
         for (var i = 0; i < 10_000; i++)
         {
             var message = new MqttMessageSnapshot(
-                $"VTS/EDGE_DATA/device-{i % 500:D3}",
+                $"factory/line/device-{i % 500:D3}",
                 $"{{\"sequence\":{i},\"value\":\"{new string('x', 48)}\"}}",
                 receivedAt,
                 Qos: 0,
@@ -54,7 +54,7 @@ public sealed class LiveUpdatePerformanceTests
             new object[]
             {
                 new MqttMessageSnapshot(
-                    "VTS/EDGE_DATA/device",
+                    "factory/line/device",
                     "{\"value\":1}",
                     receivedAt,
                     Qos: 0,
@@ -78,7 +78,7 @@ public sealed class LiveUpdatePerformanceTests
             new object[]
             {
                 new MqttMessageSnapshot(
-                    "VTS/EDGE_DATA/device",
+                    "factory/line/device",
                     "{\"value\":2}",
                     receivedAt.AddMilliseconds(1),
                     Qos: 0,

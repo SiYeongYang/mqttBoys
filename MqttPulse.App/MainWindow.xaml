@@ -196,6 +196,40 @@
             <Setter Property="Padding" Value="9,4" />
         </Style>
 
+        <Style x:Key="ViewModeButtonStyle" TargetType="RadioButton">
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Foreground" Value="White" />
+                    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
             <Setter Property="Background" Value="#FFF8F8" />
@@ -701,7 +735,8 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
-                                <DockPanel Margin="0,0,0,9">
+                                <DockPanel Margin="0,0,0,9"
+                                           LastChildFill="True">
                                     <StackPanel DockPanel.Dock="Right"
                                                 Orientation="Horizontal">
                                         <Button x:Name="ValueChartButton"
@@ -716,24 +751,55 @@
                                                 Style="{StaticResource QuietButtonStyle}"
                                                 Margin="0,0,4,0" />
                                         <Button Content="Copy"
-                                                Command="{Binding CopyValueCommand}"
-                                                Style="{StaticResource QuietButtonStyle}" />
+                                                 Command="{Binding CopyValueCommand}"
+                                                 Style="{StaticResource QuietButtonStyle}" />
                                     </StackPanel>
-                                    <TextBlock Text="Value"
-                                               Style="{StaticResource SectionTitleStyle}" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Value"
+                                                   Style="{StaticResource SectionTitleStyle}"
+                                                   Margin="0,0,10,0" />
+                                        <RadioButton x:Name="ValueRawModeButton"
+                                                     GroupName="ValueViewMode"
+                                                     Content="Raw"
+                                                     IsChecked="{Binding IsValueRawMode, Mode=OneWay}"
+                                                     Command="{Binding ShowValueRawCommand}"
+                                                     Style="{StaticResource ViewModeButtonStyle}" />
+                                        <RadioButton x:Name="ValueDiffModeButton"
+                                                     GroupName="ValueViewMode"
+                                                     Content="Diff"
+                                                     IsChecked="{Binding IsValueDiffMode, Mode=OneWay}"
+                                                     Command="{Binding ShowValueDiffCommand}"
+                                                     Style="{StaticResource ViewModeButtonStyle}"
+                                                     Margin="3,0,0,0"
+                                                     ToolTip="Compare Value with the selected History message" />
+                                    </StackPanel>
                                 </DockPanel>
-                                <controls:JsonPayloadViewer x:Name="ValuePayloadViewer"
-                                                            Grid.Row="1"
-                                                            Text="{Binding ValuePayloadText, Mode=OneWay}"
-                                                            EnableChartActions="True"
-                                                            ChartRequested="ValuePayloadViewer_ChartRequested"
-                                                            FontFamily="Consolas"
-                                                            FontSize="12"
-                                                            VerticalScrollBarVisibility="Auto"
-                                                            HorizontalScrollBarVisibility="Auto"
-                                                            BorderBrush="{StaticResource BorderBrushSoft}"
-                                                            Background="{StaticResource CodeBackgroundBrush}"
-                                                            ToolTip="Shift + 마우스 휠로 좌우 이동" />
+                                <Grid Grid.Row="1">
+                                    <controls:JsonPayloadViewer x:Name="ValuePayloadViewer"
+                                                                Text="{Binding ValuePayloadText, Mode=OneWay}"
+                                                                EnableChartActions="True"
+                                                                ChartRequested="PayloadViewer_ChartRequested"
+                                                                Visibility="{Binding IsValueRawMode, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                FontFamily="Consolas"
+                                                                FontSize="12"
+                                                                VerticalScrollBarVisibility="Auto"
+                                                                HorizontalScrollBarVisibility="Auto"
+                                                                BorderBrush="{StaticResource BorderBrushSoft}"
+                                                                Background="{StaticResource CodeBackgroundBrush}"
+                                                                ToolTip="Shift + 마우스 휠로 좌우 이동" />
+                                    <controls:JsonDiffViewer x:Name="ValueDiffViewer"
+                                                             BaselineText="{Binding SelectedPayloadText, Mode=OneWay}"
+                                                             CurrentText="{Binding ValuePayloadText, Mode=OneWay}"
+                                                             IsActive="{Binding IsValueDiffMode, Mode=OneWay}"
+                                                             Visibility="{Binding IsValueDiffMode, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                             FontFamily="Consolas"
+                                                             FontSize="12"
+                                                             VerticalScrollBarVisibility="Auto"
+                                                             HorizontalScrollBarVisibility="Auto"
+                                                             BorderBrush="{StaticResource BorderBrushSoft}"
+                                                             Background="{StaticResource CodeBackgroundBrush}"
+                                                             ToolTip="Shift + 마우스 휠로 좌우 이동" />
+                                </Grid>
                             </Grid>
 
                             <GridSplitter Grid.Column="1"
@@ -757,8 +823,11 @@
                                     <TextBlock Text="Selected"
                                                Style="{StaticResource SectionTitleStyle}" />
                                 </DockPanel>
-                                <controls:JsonPayloadViewer Grid.Row="1"
+                                <controls:JsonPayloadViewer x:Name="SelectedPayloadViewer"
+                                                            Grid.Row="1"
                                                             Text="{Binding SelectedPayloadText, Mode=OneWay}"
+                                                            EnableChartActions="True"
+                                                            ChartRequested="PayloadViewer_ChartRequested"
                                                             FontFamily="Consolas"
                                                             FontSize="12"
                                                             VerticalScrollBarVisibility="Auto"

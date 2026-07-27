@@ -12,12 +12,12 @@ public sealed class MqttClientServiceTests
         var profile = new BrokerProfile
         {
             Transport = "wss",
-            Host = "172.16.1.224",
+            Host = "192.0.2.10",
             Port = 9001,
             WebSocketPath = "ws"
         };
 
-        Assert.AreEqual("wss://172.16.1.224:9001/ws", MqttClientService.BuildWebSocketUri(profile));
+        Assert.AreEqual("wss://192.0.2.10:9001/ws", MqttClientService.BuildWebSocketUri(profile));
     }
 
     [TestMethod]
@@ -46,7 +46,7 @@ public sealed class MqttClientServiceTests
             SshUsername = "edge",
             SshPrivateKeyPath = @"~\.ssh\id_ed25519",
             SshLocalPort = 28883,
-            Host = "10.10.0.5",
+            Host = "192.0.2.20",
             Port = 1883
         };
 
@@ -83,10 +83,10 @@ public sealed class MqttClientServiceTests
     {
         var profile = new BrokerProfile
         {
-            Host = "10.10.0.5",
+            Host = "192.0.2.20",
             Port = 1883
         };
 
-        Assert.AreEqual("127.0.0.1:28883 -> 10.10.0.5:1883", SshTunnelProcessService.BuildForwardSummary(profile, 28883));
+        Assert.AreEqual("127.0.0.1:28883 -> 192.0.2.20:1883", SshTunnelProcessService.BuildForwardSummary(profile, 28883));
     }
 }
