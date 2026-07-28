@@ -6,7 +6,7 @@ namespace MqttPulse.App.ViewModels;
 
 public sealed class ProfileTreeNodeViewModel : ObservableObject
 {
-    private bool _isExpanded = true;
+    private bool _isExpanded;
     private bool _isSelected;
     private ProfileNodeDropPosition _dropPosition;
 

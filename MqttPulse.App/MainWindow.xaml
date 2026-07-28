@@ -20,6 +20,16 @@
         TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType"
         TextOptions.TextHintingMode="Fixed">
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static ApplicationCommands.Find}"
+                        CanExecute="FindInSelected_CanExecute"
+                        Executed="FindInSelected_Executed" />
+    </Window.CommandBindings>
+    <Window.InputBindings>
+        <KeyBinding Command="{x:Static ApplicationCommands.Find}"
+                    Key="F"
+                    Modifiers="Control" />
+    </Window.InputBindings>
     <Window.Resources>
         <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
         <SolidColorBrush x:Key="CanvasBrush" Color="#EEF3F2" />
@@ -835,25 +845,131 @@
                                     <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
                                 <DockPanel Margin="0,0,0,9">
-                                    <Button DockPanel.Dock="Right"
-                                            Content="Copy"
-                                            Command="{Binding CopySelectedCommand}"
-                                            Style="{StaticResource QuietButtonStyle}" />
+                                    <StackPanel DockPanel.Dock="Right"
+                                                Orientation="Horizontal">
+                                        <Button x:Name="SelectedSearchButton"
+                                                Width="30"
+                                                MinHeight="0"
+                                                Padding="0"
+                                                Margin="0,0,4,0"
+                                                Command="{x:Static ApplicationCommands.Find}"
+                                                Style="{StaticResource QuietButtonStyle}"
+                                                FontFamily="Segoe MDL2 Assets"
+                                                FontSize="14"
+                                                Content="&#xE721;"
+                                                ToolTip="Find in Selected (Ctrl+F)"
+                                                AutomationProperties.Name="Find in Selected" />
+                                        <Button Content="Copy"
+                                                Command="{Binding CopySelectedCommand}"
+                                                Style="{StaticResource QuietButtonStyle}" />
+                                    </StackPanel>
                                     <TextBlock Text="Selected"
                                                Style="{StaticResource SectionTitleStyle}" />
                                 </DockPanel>
-                                <controls:JsonPayloadViewer x:Name="SelectedPayloadViewer"
-                                                            Grid.Row="1"
-                                                            Text="{Binding SelectedPayloadText, Mode=OneWay}"
-                                                            EnableChartActions="True"
-                                                            ChartRequested="PayloadViewer_ChartRequested"
-                                                            FontFamily="Consolas"
-                                                            FontSize="12"
-                                                            VerticalScrollBarVisibility="Auto"
-                                                            HorizontalScrollBarVisibility="Auto"
-                                                            BorderBrush="{StaticResource BorderBrushSoft}"
-                                                            Background="{StaticResource CodeBackgroundBrush}"
-                                                            ToolTip="Shift + 마우스 휠로 좌우 이동" />
+                                <Grid x:Name="SelectedContentGrid"
+                                      Grid.Row="1"
+                                      ClipToBounds="True">
+                                    <controls:JsonPayloadViewer x:Name="SelectedPayloadViewer"
+                                                                Text="{Binding SelectedPayloadText, Mode=OneWay}"
+                                                                EnableChartActions="True"
+                                                                ChartRequested="PayloadViewer_ChartRequested"
+                                                                SearchStateChanged="SelectedPayloadViewer_SearchStateChanged"
+                                                                FontFamily="Consolas"
+                                                                FontSize="12"
+                                                                VerticalScrollBarVisibility="Auto"
+                                                                HorizontalScrollBarVisibility="Auto"
+                                                                BorderBrush="{StaticResource BorderBrushSoft}"
+                                                                Background="{StaticResource CodeBackgroundBrush}"
+                                                                ToolTip="Shift + 마우스 휠로 좌우 이동" />
+
+                                    <Border x:Name="SelectedSearchPanel"
+                                            Panel.ZIndex="10"
+                                            Width="344"
+                                            Height="40"
+                                            Margin="0,8,10,0"
+                                            Padding="4"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Top"
+                                            Visibility="Collapsed"
+                                            Background="White"
+                                            BorderBrush="{StaticResource BorderBrushStrong}"
+                                            BorderThickness="1"
+                                            CornerRadius="6">
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="10"
+                                                              ShadowDepth="3"
+                                                              Opacity="0.18"
+                                                              Color="#14201E" />
+                                        </Border.Effect>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="64" />
+                                                <ColumnDefinition Width="30" />
+                                                <ColumnDefinition Width="30" />
+                                                <ColumnDefinition Width="30" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="SelectedSearchInput"
+                                                     MinHeight="0"
+                                                     Height="30"
+                                                     Padding="7,3"
+                                                     BorderThickness="0"
+                                                     Background="Transparent"
+                                                     TextChanged="SelectedSearchInput_TextChanged"
+                                                     KeyDown="SelectedSearchInput_KeyDown"
+                                                     AutomationProperties.Name="Find in Selected" />
+                                            <Border Grid.Column="1"
+                                                    BorderBrush="{StaticResource BorderBrushSoft}"
+                                                    BorderThickness="1,0,0,0">
+                                                <TextBlock x:Name="SelectedSearchResultText"
+                                                           Text="0 / 0"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="11.5"
+                                                           Foreground="{StaticResource MutedBrush}" />
+                                            </Border>
+                                            <Button x:Name="SelectedSearchPreviousButton"
+                                                    Grid.Column="2"
+                                                    Width="30"
+                                                    Height="30"
+                                                    MinHeight="0"
+                                                    Padding="0"
+                                                    Click="SelectedSearchPreviousButton_Click"
+                                                    Style="{StaticResource QuietButtonStyle}"
+                                                    FontFamily="Segoe MDL2 Assets"
+                                                    FontSize="12"
+                                                    Content="&#xE70E;"
+                                                    ToolTip="Previous result (Shift+Enter)"
+                                                    AutomationProperties.Name="Previous search result" />
+                                            <Button x:Name="SelectedSearchNextButton"
+                                                    Grid.Column="3"
+                                                    Width="30"
+                                                    Height="30"
+                                                    MinHeight="0"
+                                                    Padding="0"
+                                                    Click="SelectedSearchNextButton_Click"
+                                                    Style="{StaticResource QuietButtonStyle}"
+                                                    FontFamily="Segoe MDL2 Assets"
+                                                    FontSize="12"
+                                                    Content="&#xE70D;"
+                                                    ToolTip="Next result (Enter)"
+                                                    AutomationProperties.Name="Next search result" />
+                                            <Button x:Name="SelectedSearchCloseButton"
+                                                    Grid.Column="4"
+                                                    Width="30"
+                                                    Height="30"
+                                                    MinHeight="0"
+                                                    Padding="0"
+                                                    Click="SelectedSearchCloseButton_Click"
+                                                    Style="{StaticResource QuietButtonStyle}"
+                                                    FontFamily="Segoe MDL2 Assets"
+                                                    FontSize="12"
+                                                    Content="&#xE711;"
+                                                    ToolTip="Close"
+                                                    AutomationProperties.Name="Close search" />
+                                        </Grid>
+                                    </Border>
+                                </Grid>
                             </Grid>
                         </Grid>
 

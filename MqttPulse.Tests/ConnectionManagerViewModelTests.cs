@@ -83,6 +83,37 @@ public sealed class ConnectionManagerViewModelTests
         }
     }
 
+    [TestMethod]
+    public void OpeningConnectionsStartsWithEveryFolderCollapsed()
+    {
+        var path = TempProfilePath();
+        try
+        {
+            var store = new ProfileStore(path);
+            store.Save(
+                new[] { Profile("Broker A", "Factory/Line 1", 1883) },
+                new[] { "Factory/Line 1", "Laboratory" });
+
+            using var viewModel = new MainViewModel(store);
+            foreach (var folder in FindNodes(viewModel.ProfileTree).Where(x => x.IsFolder))
+            {
+                folder.IsExpanded = true;
+            }
+
+            viewModel.OpenConnectionManagerCommand.Execute(null);
+
+            Assert.IsTrue(viewModel.IsConnectionManagerOpen);
+            Assert.IsTrue(
+                FindNodes(viewModel.ProfileTree)
+                    .Where(x => x.IsFolder)
+                    .All(x => !x.IsExpanded));
+        }
+        finally
+        {
+            DeleteProfileDirectory(path);
+        }
+    }
+
 
     [TestMethod]
     public void MoveProfileNodeMovesBrokerIntoTargetFolder()

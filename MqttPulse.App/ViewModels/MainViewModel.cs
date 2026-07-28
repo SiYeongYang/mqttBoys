@@ -1152,7 +1152,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private Task OpenConnectionManagerAsync()
     {
-        RebuildProfileTree();
+        RebuildProfileTree(preserveExpansion: false);
         RestoreProfileTreeSelection(_connectedProfile?.Id ?? SelectedProfile?.Id, null);
         IsConnectionManagerOpen = true;
         return Task.CompletedTask;
@@ -1383,15 +1383,53 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void RebuildProfileTree()
+    private void RebuildProfileTree(bool preserveExpansion = true)
     {
+        var expandedFolders = preserveExpansion
+            ? CaptureExpandedProfileFolders(ProfileTree)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ProfileTree.Clear();
         foreach (var node in ProfileTreeBuilder.Build(Profiles, _profileFolderPaths, _profileTreeOrder))
         {
             ProfileTree.Add(node);
         }
 
+        RestoreExpandedProfileFolders(ProfileTree, expandedFolders);
         RefreshFolderOptions();
+    }
+
+    private static HashSet<string> CaptureExpandedProfileFolders(
+        IEnumerable<ProfileTreeNodeViewModel> nodes)
+    {
+        var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CaptureExpandedProfileFolders(nodes, expanded);
+        return expanded;
+    }
+
+    private static void CaptureExpandedProfileFolders(
+        IEnumerable<ProfileTreeNodeViewModel> nodes,
+        ISet<string> expanded)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.IsFolder && node.IsExpanded)
+            {
+                expanded.Add(node.FullPath);
+            }
+
+            CaptureExpandedProfileFolders(node.Children, expanded);
+        }
+    }
+
+    private static void RestoreExpandedProfileFolders(
+        IEnumerable<ProfileTreeNodeViewModel> nodes,
+        IReadOnlySet<string> expanded)
+    {
+        foreach (var node in nodes)
+        {
+            node.IsExpanded = node.IsFolder && expanded.Contains(node.FullPath);
+            RestoreExpandedProfileFolders(node.Children, expanded);
+        }
     }
 
     private void RefreshFolderOptions()

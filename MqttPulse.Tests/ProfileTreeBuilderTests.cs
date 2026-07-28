@@ -26,6 +26,8 @@ public sealed class ProfileTreeBuilderTests
         Assert.IsEmpty(local.FullPath);
         Assert.AreEqual("MQTT 입력", line1Profile.Profile!.Name);
         Assert.IsTrue(emptyFolder.IsFolder);
+        Assert.IsFalse(siteA.IsExpanded);
+        Assert.IsFalse(emptyFolder.IsExpanded);
         Assert.IsEmpty(emptyFolder.Children);
     }
 

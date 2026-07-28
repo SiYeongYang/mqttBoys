@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using MqttPulse.App;
@@ -244,6 +245,114 @@ public sealed class MainLayoutTests
                     new[] { "$.value", "$.running" },
                     metrics.Select(metric => metric.DisplayPath).ToArray());
             }
+        });
+    }
+
+    [TestMethod]
+    public void SelectedViewerFindHighlightsAndNavigatesCaseInsensitiveMatches()
+    {
+        RunInWindow(window =>
+        {
+            var viewer = (JsonPayloadViewer)window.FindName("SelectedPayloadViewer");
+            viewer.Text = """
+                          {
+                            "first": "alpha",
+                            "second": "ALPHA",
+                            "third": "alpha"
+                          }
+                          """;
+
+            viewer.SetSearchQuery("alpha");
+            window.UpdateLayout();
+
+            Assert.AreEqual(3, viewer.SearchMatchCount);
+            Assert.AreEqual(1, viewer.ActiveSearchMatchNumber);
+            Assert.AreEqual("1 / 3", viewer.SearchResultText);
+            var highlighted = viewer.Document.Blocks
+                .OfType<Paragraph>()
+                .SelectMany(paragraph => paragraph.Inlines.OfType<Run>())
+                .Where(run => run.Background is not null)
+                .ToArray();
+            Assert.IsGreaterThanOrEqualTo(3, highlighted.Length);
+            Assert.AreEqual(2, highlighted.Select(run => run.Background).Distinct().Count());
+
+            viewer.MoveSearchMatch(1);
+            Assert.AreEqual(2, viewer.ActiveSearchMatchNumber);
+            Assert.AreEqual("2 / 3", viewer.SearchResultText);
+
+            viewer.MoveSearchMatch(-2);
+            Assert.AreEqual(3, viewer.ActiveSearchMatchNumber);
+
+            viewer.SetSearchQuery("\"first\": \"alpha\"");
+            Assert.AreEqual(1, viewer.SearchMatchCount);
+            Assert.IsGreaterThan(
+                1,
+                viewer.Document.Blocks
+                    .OfType<Paragraph>()
+                    .SelectMany(paragraph => paragraph.Inlines.OfType<Run>())
+                    .Count(run => run.Background is not null));
+
+            viewer.ClearSearch();
+            Assert.AreEqual(0, viewer.SearchMatchCount);
+            Assert.IsTrue(
+                viewer.Document.Blocks
+                    .OfType<Paragraph>()
+                    .SelectMany(paragraph => paragraph.Inlines.OfType<Run>())
+                    .All(run => run.Background is null));
+        });
+    }
+
+    [TestMethod]
+    public void SelectedFindCommandOpensCompactPanelAndSupportsResultControls()
+    {
+        RunInWindow(window =>
+        {
+            var viewer = (JsonPayloadViewer)window.FindName("SelectedPayloadViewer");
+            var panel = (Border)window.FindName("SelectedSearchPanel");
+            var content = (Grid)window.FindName("SelectedContentGrid");
+            var input = (TextBox)window.FindName("SelectedSearchInput");
+            var result = (TextBlock)window.FindName("SelectedSearchResultText");
+            var next = (Button)window.FindName("SelectedSearchNextButton");
+            var close = (Button)window.FindName("SelectedSearchCloseButton");
+            var searchButton = (Button)window.FindName("SelectedSearchButton");
+            var binding = window.InputBindings.OfType<KeyBinding>().Single(x =>
+                x.Key == Key.F && x.Modifiers == ModifierKeys.Control);
+
+            Assert.AreSame(ApplicationCommands.Find, binding.Command);
+            Assert.AreSame(ApplicationCommands.Find, searchButton.Command);
+            Assert.AreEqual(Visibility.Collapsed, panel.Visibility);
+
+            viewer.Text = "{\"a\":\"alpha\",\"b\":\"ALPHA\",\"c\":\"alpha\"}";
+            ApplicationCommands.Find.Execute(null, window);
+            PumpDispatcher(TimeSpan.FromMilliseconds(30));
+            Assert.AreEqual(Visibility.Visible, panel.Visibility);
+
+            input.Text = "alpha";
+            PumpDispatcher(TimeSpan.FromMilliseconds(220));
+            Assert.AreEqual("1 / 3", result.Text);
+            Assert.IsTrue(next.IsEnabled);
+
+            next.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.AreEqual("2 / 3", result.Text);
+
+            foreach (var viewport in new[]
+                     {
+                         new Size(1920, 1080),
+                         new Size(1440, 900),
+                         new Size(1366, 768),
+                         new Size(1100, 720)
+                     })
+            {
+                window.Width = viewport.Width;
+                window.Height = viewport.Height;
+                window.UpdateLayout();
+                Assert.IsLessThanOrEqualTo(content.ActualWidth, panel.ActualWidth);
+                Assert.IsLessThanOrEqualTo(content.ActualHeight, panel.ActualHeight);
+            }
+
+            close.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.AreEqual(Visibility.Collapsed, panel.Visibility);
+            Assert.AreEqual(string.Empty, viewer.SearchQuery);
         });
     }
 

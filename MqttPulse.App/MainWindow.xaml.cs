@@ -10,11 +10,16 @@ namespace MqttPulse.App;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
+    private readonly System.Windows.Threading.DispatcherTimer _selectedSearchDebounceTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(120)
+    };
     private Point _profileTreeDragStart;
     private ProfileTreeNodeViewModel? _profileTreeDragSource;
     private ProfileTreeNodeViewModel? _profileTreeDropTarget;
     private bool _isCommittingPeriodTopicSuggestion;
     private bool _isCommittingPublishTopicSuggestion;
+    private bool _suppressSelectedSearchTextChanged;
     private ChartDashboardWindow? _chartWindow;
 
     public MainWindow()
@@ -22,6 +27,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
+        _selectedSearchDebounceTimer.Tick += SelectedSearchDebounceTimer_Tick;
         Closed += MainWindow_Closed;
     }
 
@@ -94,8 +100,134 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
+        _selectedSearchDebounceTimer.Stop();
         _chartWindow?.Close();
         _viewModel.Dispose();
+    }
+
+    private void FindInSelected_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+    {
+        e.CanExecute = DataContext is MainViewModel viewModel
+                       && !viewModel.IsConnectionManagerOpen
+                       && !viewModel.IsPeriodCheckOpen
+                       && !viewModel.IsJsonFormatterOpen;
+        e.Handled = true;
+    }
+
+    private void FindInSelected_Executed(object sender, ExecutedRoutedEventArgs e)
+    {
+        OpenSelectedSearch();
+        e.Handled = true;
+    }
+
+    private void OpenSelectedSearch()
+    {
+        SelectedSearchPanel.Visibility = Visibility.Visible;
+        FlushSelectedSearchQuery();
+        Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Input,
+            new Action(() =>
+            {
+                SelectedSearchInput.Focus();
+                SelectedSearchInput.SelectAll();
+            }));
+    }
+
+    private void SelectedSearchInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressSelectedSearchTextChanged)
+        {
+            return;
+        }
+
+        _selectedSearchDebounceTimer.Stop();
+        _selectedSearchDebounceTimer.Start();
+    }
+
+    private void SelectedSearchDebounceTimer_Tick(object? sender, EventArgs e)
+    {
+        FlushSelectedSearchQuery();
+    }
+
+    private void FlushSelectedSearchQuery()
+    {
+        _selectedSearchDebounceTimer.Stop();
+        SelectedPayloadViewer.SetSearchQuery(SelectedSearchInput.Text);
+        UpdateSelectedSearchState();
+    }
+
+    private void SelectedSearchInput_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            CloseSelectedSearch();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key != Key.Enter)
+        {
+            return;
+        }
+
+        FlushSelectedSearchQuery();
+        SelectedPayloadViewer.MoveSearchMatch(
+            (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift ? -1 : 1);
+        e.Handled = true;
+    }
+
+    private void SelectedSearchPreviousButton_Click(object sender, RoutedEventArgs e)
+    {
+        FlushSelectedSearchQuery();
+        SelectedPayloadViewer.MoveSearchMatch(-1);
+    }
+
+    private void SelectedSearchNextButton_Click(object sender, RoutedEventArgs e)
+    {
+        FlushSelectedSearchQuery();
+        SelectedPayloadViewer.MoveSearchMatch(1);
+    }
+
+    private void SelectedSearchCloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        CloseSelectedSearch();
+    }
+
+    private void CloseSelectedSearch()
+    {
+        _selectedSearchDebounceTimer.Stop();
+        _suppressSelectedSearchTextChanged = true;
+        try
+        {
+            SelectedSearchInput.Clear();
+        }
+        finally
+        {
+            _suppressSelectedSearchTextChanged = false;
+        }
+
+        SelectedPayloadViewer.ClearSearch();
+        SelectedSearchPanel.Visibility = Visibility.Collapsed;
+        SelectedPayloadViewer.Focus();
+        UpdateSelectedSearchState();
+    }
+
+    private void SelectedPayloadViewer_SearchStateChanged(object? sender, EventArgs e)
+    {
+        if (SelectedSearchResultText is null)
+        {
+            return;
+        }
+
+        UpdateSelectedSearchState();
+    }
+
+    private void UpdateSelectedSearchState()
+    {
+        var hasMatches = SelectedPayloadViewer.SearchMatchCount > 0;
+        SelectedSearchResultText.Text = SelectedPayloadViewer.SearchResultText;
+        SelectedSearchPreviousButton.IsEnabled = hasMatches;
+        SelectedSearchNextButton.IsEnabled = hasMatches;
     }
 
     private void PublishTopicInput_TextChanged(object sender, TextChangedEventArgs e)
