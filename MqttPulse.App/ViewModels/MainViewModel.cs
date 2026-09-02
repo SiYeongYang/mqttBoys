@@ -51,8 +51,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string _selectedProfileFolderPath = string.Empty;
     private bool _isRefreshingFolderOptions;
     private string _valuePayloadText = string.Empty;
+    private string _valueAsciiText = string.Empty;
     private string _previousValuePayloadText = string.Empty;
     private string _selectedPayloadText = string.Empty;
+    private string _selectedAsciiText = string.Empty;
     private string _selectedTopicAveragePeriodText = "Avg -";
     private string _publishTopic = string.Empty;
     private string _publishPayload = "{\r\n  \"hello\": \"mqtt\"\r\n}";
@@ -66,7 +68,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isJsonFormatterOpen;
     private bool _topicListsNeedRefresh;
     private bool _historyPaused;
-    private bool _isValueDiffMode;
+    private PayloadViewMode _valueViewMode;
+    private PayloadViewMode _selectedViewMode;
     private bool _freezeDetail;
     private bool _followLatest = true;
     private string _statusMessage = "Ready";
@@ -86,6 +89,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private long _lastHistoryRefreshTimestamp;
     private long _lastTopicVisualRefreshTimestamp;
     private ValueFormatRequest? _pendingValueFormatRequest;
+    private MqttMessageSnapshot? _displayedValueMessage;
     private int _valueFormatWorkerRunning;
     private volatile bool _isDisposed;
 
@@ -121,6 +125,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CopySelectedCommand = new RelayCommand(CopySelectedToClipboard, () => !string.IsNullOrEmpty(SelectedPayloadText));
         ShowValueRawCommand = new RelayCommand(ShowValueRaw);
         ShowValueDiffCommand = new RelayCommand(ShowValueDiff);
+        ShowValueAsciiCommand = new RelayCommand(ShowValueAscii, () => _displayedValueMessage is not null);
+        ShowSelectedRawCommand = new RelayCommand(ShowSelectedRaw);
+        ShowSelectedAsciiCommand = new RelayCommand(ShowSelectedAscii, () => SelectedHistoryItem is not null);
         ToggleHistoryPauseCommand = new RelayCommand(ToggleHistoryPause);
         OpenConnectionManagerCommand = new AsyncRelayCommand(OpenConnectionManagerAsync, () => !IsBusy && !IsPeriodCheckRunning);
         CloseConnectionManagerCommand = new RelayCommand(CloseConnectionManager);
@@ -208,6 +215,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand ShowValueRawCommand { get; }
 
     public RelayCommand ShowValueDiffCommand { get; }
+
+    public RelayCommand ShowValueAsciiCommand { get; }
+
+    public RelayCommand ShowSelectedRawCommand { get; }
+
+    public RelayCommand ShowSelectedAsciiCommand { get; }
 
     public RelayCommand ToggleHistoryPauseCommand { get; }
 
@@ -328,7 +341,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _selectedTopic, value))
             {
                 HistoryPaused = false;
-                IsValueDiffMode = false;
+                SetValueViewMode(PayloadViewMode.Raw);
+                SetSelectedViewMode(PayloadViewMode.Raw);
                 SelectedHistoryItem = null;
                 PublishTopic = value?.FullTopic ?? string.Empty;
                 _lastValueRefreshTimestamp = 0;
@@ -351,7 +365,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (value is not null)
             {
                 SelectedPayloadText = FormatPayloadForDetail(value.Message);
+                if (IsSelectedAsciiMode)
+                {
+                    SelectedAsciiText = PackedAsciiDecoder.Decode(value.Message.PayloadText).DisplayText;
+                }
             }
+
+            ShowSelectedAsciiCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -475,28 +495,36 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _valuePayloadText, value))
             {
+                OnPropertyChanged(nameof(ValueDisplayText));
                 CopyValueCommand.RaiseCanExecuteChanged();
             }
         }
     }
 
-    public bool IsValueRawMode => !IsValueDiffMode;
-
-    public bool IsValueDiffMode
+    public string ValueAsciiText
     {
-        get => _isValueDiffMode;
+        get => _valueAsciiText;
         private set
         {
-            if (SetProperty(ref _isValueDiffMode, value))
+            if (SetProperty(ref _valueAsciiText, value))
             {
-                OnPropertyChanged(nameof(IsValueRawMode));
-                if (!value)
-                {
-                    PreviousValuePayloadText = string.Empty;
-                }
+                OnPropertyChanged(nameof(ValueDisplayText));
+                CopyValueCommand.RaiseCanExecuteChanged();
             }
         }
     }
+
+    public string ValueDisplayText => IsValueAsciiMode
+        ? ValueAsciiText
+        : ValuePayloadText;
+
+    public bool IsValueRawMode => _valueViewMode == PayloadViewMode.Raw;
+
+    public bool IsValueDiffMode => _valueViewMode == PayloadViewMode.Diff;
+
+    public bool IsValueAsciiMode => _valueViewMode == PayloadViewMode.Ascii;
+
+    public bool IsValueTextMode => !IsValueDiffMode;
 
     public string PreviousValuePayloadText
     {
@@ -511,10 +539,32 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedPayloadText, value))
             {
+                OnPropertyChanged(nameof(SelectedDisplayText));
                 CopySelectedCommand.RaiseCanExecuteChanged();
             }
         }
     }
+
+    public string SelectedAsciiText
+    {
+        get => _selectedAsciiText;
+        private set
+        {
+            if (SetProperty(ref _selectedAsciiText, value))
+            {
+                OnPropertyChanged(nameof(SelectedDisplayText));
+                CopySelectedCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string SelectedDisplayText => IsSelectedAsciiMode
+        ? SelectedAsciiText
+        : SelectedPayloadText;
+
+    public bool IsSelectedRawMode => _selectedViewMode == PayloadViewMode.Raw;
+
+    public bool IsSelectedAsciiMode => _selectedViewMode == PayloadViewMode.Ascii;
 
     public string SelectedTopicAveragePeriodText
     {
@@ -1041,23 +1091,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void CopyValueToClipboard()
     {
-        if (string.IsNullOrEmpty(ValuePayloadText))
+        var text = ValueDisplayText;
+        if (string.IsNullOrEmpty(text))
         {
             return;
         }
 
-        Clipboard.SetText(ValuePayloadText);
+        Clipboard.SetText(text);
         StatusMessage = "Value copied";
     }
 
     private void CopySelectedToClipboard()
     {
-        if (string.IsNullOrEmpty(SelectedPayloadText))
+        var text = SelectedDisplayText;
+        if (string.IsNullOrEmpty(text))
         {
             return;
         }
 
-        Clipboard.SetText(SelectedPayloadText);
+        Clipboard.SetText(text);
         StatusMessage = "Selected copied";
     }
 
@@ -1725,9 +1777,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RootTopics.Clear();
         SelectedTopicHistory.Clear();
         SelectedTopic = null;
+        _displayedValueMessage = null;
         ValuePayloadText = string.Empty;
+        ValueAsciiText = string.Empty;
         PreviousValuePayloadText = string.Empty;
         SelectedPayloadText = string.Empty;
+        SelectedAsciiText = string.Empty;
         SelectedTopicAveragePeriodText = "Avg -";
         ReceivedMessages = 0;
         PendingCount = 0;
@@ -2085,11 +2140,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (SelectedTopic is null)
         {
+            _displayedValueMessage = null;
             ValuePayloadText = string.Empty;
+            ValueAsciiText = string.Empty;
             PreviousValuePayloadText = string.Empty;
             SelectedHistoryItem = null;
             SelectedPayloadText = string.Empty;
+            SelectedAsciiText = string.Empty;
             SelectedTopicAveragePeriodText = "Avg -";
+            ShowValueAsciiCommand.RaiseCanExecuteChanged();
             return;
         }
 
@@ -2117,6 +2176,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             SelectedHistoryItem = null;
             SelectedPayloadText = string.Empty;
+            SelectedAsciiText = string.Empty;
         }
     }
 
@@ -2124,10 +2184,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         MqttMessageSnapshot message,
         MqttMessageSnapshot? previousMessage)
     {
+        _displayedValueMessage = message;
         ValuePayloadText = FormatPayloadForDetail(message);
+        if (IsValueAsciiMode)
+        {
+            ValueAsciiText = PackedAsciiDecoder.Decode(message.PayloadText).DisplayText;
+        }
+
         PreviousValuePayloadText = IsValueDiffMode && previousMessage is not null
             ? FormatPayloadForDetail(previousMessage)
             : string.Empty;
+        ShowValueAsciiCommand.RaiseCanExecuteChanged();
     }
 
     private void RefreshSelectedTopicValue()
@@ -2138,22 +2205,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        ValuePayloadText = string.Empty;
-        PreviousValuePayloadText = string.Empty;
+        ClearValueDisplay();
     }
 
     private void QueueSelectedTopicValueRefresh()
     {
         if (SelectedTopic?.LastMessage is not { } message)
         {
-            ValuePayloadText = string.Empty;
-            PreviousValuePayloadText = string.Empty;
+            ClearValueDisplay();
             return;
         }
 
         var request = new ValueFormatRequest(
             message,
-            IsValueDiffMode ? SelectedTopic.PreviousMessage : null);
+            IsValueDiffMode ? SelectedTopic.PreviousMessage : null,
+            IsValueAsciiMode);
         Interlocked.Exchange(ref _pendingValueFormatRequest, request);
         StartValueFormatWorker();
     }
@@ -2179,6 +2245,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 var previousFormatted = request.PreviousMessage is null
                     ? string.Empty
                     : FormatPayloadForDetail(request.PreviousMessage);
+                var asciiText = request.DecodeAscii
+                    ? PackedAsciiDecoder.Decode(request.Message.PayloadText).DisplayText
+                    : string.Empty;
                 if (_isDisposed)
                 {
                     return;
@@ -2191,10 +2260,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                         && !HistoryPaused
                         && ReferenceEquals(SelectedTopic?.LastMessage, request.Message))
                     {
+                        _displayedValueMessage = request.Message;
                         ValuePayloadText = formatted;
                         PreviousValuePayloadText = IsValueDiffMode
                             ? previousFormatted
                             : string.Empty;
+                        if (IsValueAsciiMode && request.DecodeAscii)
+                        {
+                            ValueAsciiText = asciiText;
+                        }
+
+                        ShowValueAsciiCommand.RaiseCanExecuteChanged();
                     }
                 }, DispatcherPriority.DataBind);
             }
@@ -2217,15 +2293,84 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void ClearValueDisplay()
+    {
+        _displayedValueMessage = null;
+        ValuePayloadText = string.Empty;
+        ValueAsciiText = string.Empty;
+        PreviousValuePayloadText = string.Empty;
+        ShowValueAsciiCommand.RaiseCanExecuteChanged();
+    }
+
+    private void SetValueViewMode(PayloadViewMode mode)
+    {
+        if (_valueViewMode == mode)
+        {
+            return;
+        }
+
+        _valueViewMode = mode;
+        if (mode != PayloadViewMode.Diff)
+        {
+            PreviousValuePayloadText = string.Empty;
+        }
+
+        if (mode == PayloadViewMode.Ascii && _displayedValueMessage is { } message)
+        {
+            ValueAsciiText = PackedAsciiDecoder.Decode(message.PayloadText).DisplayText;
+        }
+
+        OnPropertyChanged(nameof(IsValueRawMode));
+        OnPropertyChanged(nameof(IsValueDiffMode));
+        OnPropertyChanged(nameof(IsValueAsciiMode));
+        OnPropertyChanged(nameof(IsValueTextMode));
+        OnPropertyChanged(nameof(ValueDisplayText));
+        CopyValueCommand.RaiseCanExecuteChanged();
+    }
+
+    private void SetSelectedViewMode(PayloadViewMode mode)
+    {
+        if (_selectedViewMode == mode)
+        {
+            return;
+        }
+
+        _selectedViewMode = mode;
+        if (mode == PayloadViewMode.Ascii && SelectedHistoryItem is { } selected)
+        {
+            SelectedAsciiText = PackedAsciiDecoder.Decode(selected.Message.PayloadText).DisplayText;
+        }
+
+        OnPropertyChanged(nameof(IsSelectedRawMode));
+        OnPropertyChanged(nameof(IsSelectedAsciiMode));
+        OnPropertyChanged(nameof(SelectedDisplayText));
+        CopySelectedCommand.RaiseCanExecuteChanged();
+    }
+
     private void ShowValueRaw()
     {
-        IsValueDiffMode = false;
+        SetValueViewMode(PayloadViewMode.Raw);
     }
 
     private void ShowValueDiff()
     {
-        IsValueDiffMode = true;
+        SetValueViewMode(PayloadViewMode.Diff);
         QueueSelectedTopicValueRefresh();
+    }
+
+    private void ShowValueAscii()
+    {
+        SetValueViewMode(PayloadViewMode.Ascii);
+    }
+
+    private void ShowSelectedRaw()
+    {
+        SetSelectedViewMode(PayloadViewMode.Raw);
+    }
+
+    private void ShowSelectedAscii()
+    {
+        SetSelectedViewMode(PayloadViewMode.Ascii);
     }
 
     private void ClearPendingMessages()
@@ -2408,10 +2553,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DeleteProfileCommand.RaiseCanExecuteChanged();
         RenameFolderCommand.RaiseCanExecuteChanged();
         DeleteFolderCommand.RaiseCanExecuteChanged();
+        ShowValueAsciiCommand.RaiseCanExecuteChanged();
+        ShowSelectedAsciiCommand.RaiseCanExecuteChanged();
     }
 
     private sealed record ValueFormatRequest(
         MqttMessageSnapshot Message,
-        MqttMessageSnapshot? PreviousMessage);
+        MqttMessageSnapshot? PreviousMessage,
+        bool DecodeAscii);
+
+    private enum PayloadViewMode
+    {
+        Raw,
+        Diff,
+        Ascii
+    }
 
 }

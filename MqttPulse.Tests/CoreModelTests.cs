@@ -97,6 +97,55 @@ public sealed class CoreModelTests
     }
 
     [TestMethod]
+    public void PackedAsciiDecoderShowsBothByteOrdersForSingleRegister()
+    {
+        var decoded = PackedAsciiDecoder.Decode("18806");
+
+        Assert.AreEqual(1, decoded.WordCount);
+        Assert.AreEqual("Iv", decoded.HighByteFirstText);
+        Assert.AreEqual("vI", decoded.ByteSwappedText);
+        StringAssert.Contains(decoded.DisplayText, "0x4976");
+        StringAssert.Contains(decoded.DisplayText, "High byte first (BE): Iv");
+        StringAssert.Contains(decoded.DisplayText, "Byte-swapped (LE): vI");
+    }
+
+    [TestMethod]
+    public void PackedAsciiDecoderCombinesJsonArrayWordsAndKeepsPaths()
+    {
+        var decoded = PackedAsciiDecoder.Decode(
+            "{\"values\":[18501,19532,20257]}");
+
+        Assert.AreEqual(3, decoded.WordCount);
+        Assert.AreEqual("HELLO!", decoded.HighByteFirstText);
+        Assert.AreEqual("EHLL!O", decoded.ByteSwappedText);
+        StringAssert.Contains(decoded.DisplayText, "$.values[0]");
+        StringAssert.Contains(decoded.DisplayText, "$.values[2]");
+    }
+
+    [TestMethod]
+    public void PackedAsciiDecoderReadsNumericStringsAndBoundsLargePayloads()
+    {
+        var values = string.Join(',', Enumerable.Repeat("\"18806\"", 10));
+        var decoded = PackedAsciiDecoder.Decode($"[{values}]", maxWords: 3);
+
+        Assert.AreEqual(3, decoded.WordCount);
+        Assert.AreEqual("IvIvIv", decoded.HighByteFirstText);
+        Assert.IsTrue(decoded.Truncated);
+        StringAssert.Contains(decoded.DisplayText, "Words: 3+");
+        StringAssert.Contains(decoded.DisplayText, "additional values omitted");
+    }
+
+    [TestMethod]
+    public void PackedAsciiDecoderExplainsWhenNoRegisterValuesExist()
+    {
+        var decoded = PackedAsciiDecoder.Decode("{\"value\":70000,\"state\":true}");
+
+        Assert.AreEqual(0, decoded.WordCount);
+        StringAssert.Contains(decoded.DisplayText, "No 16-bit integer values found.");
+        StringAssert.Contains(decoded.DisplayText, "-32768 to 65535");
+    }
+
+    [TestMethod]
     public void JsonTextFormatterFormatsCompactsAndKeepsKoreanReadable()
     {
         const string input = "{\"상태\":\"정상\",\"value\":42,\"enabled\":true}";

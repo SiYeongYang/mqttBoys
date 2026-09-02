@@ -357,7 +357,7 @@ public sealed class MainLayoutTests
     }
 
     [TestMethod]
-    public void ValueModeButtonsSwitchBetweenRawAndDiffViewers()
+    public void ValueModeButtonsSwitchBetweenRawDiffAndAsciiViews()
     {
         RunInWindow(window =>
         {
@@ -375,6 +375,52 @@ public sealed class MainLayoutTests
             Assert.AreEqual(Visibility.Collapsed, raw.Visibility);
             Assert.AreEqual(Visibility.Visible, diff.Visibility);
             Assert.IsTrue(diff.IsActive);
+
+            var topic = new TopicViewModel("device", "factory/line/device", historyCapacity: 10);
+            topic.Record(
+                Message("18806", "2026-07-27T12:00:00+09:00"),
+                isLeaf: true,
+                leafTopicWasNew: true);
+            viewModel.SelectedTopic = topic;
+            viewModel.ToggleHistoryPauseCommand.Execute(null);
+            viewModel.ShowValueAsciiCommand.Execute(null);
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.DataBind);
+
+            Assert.IsTrue(viewModel.IsValueAsciiMode);
+            Assert.AreEqual(Visibility.Visible, raw.Visibility);
+            Assert.AreEqual(Visibility.Collapsed, diff.Visibility);
+            StringAssert.Contains(raw.Text, "Byte-swapped (LE): vI");
+        });
+    }
+
+    [TestMethod]
+    public void SelectedHeaderOffersRawAndAsciiModesWithoutCrowdingMinimumViewport()
+    {
+        RunInWindow(window =>
+        {
+            window.Width = 1100;
+            window.Height = 720;
+            var viewModel = (MainViewModel)window.DataContext;
+            var rawButton = (RadioButton)window.FindName("SelectedRawModeButton");
+            var asciiButton = (RadioButton)window.FindName("SelectedAsciiModeButton");
+            var viewer = (JsonPayloadViewer)window.FindName("SelectedPayloadViewer");
+            var topic = new TopicViewModel("device", "factory/line/device", historyCapacity: 10);
+            topic.Record(
+                Message("18806", "2026-07-27T12:00:00+09:00"),
+                isLeaf: true,
+                leafTopicWasNew: true);
+            viewModel.SelectedTopic = topic;
+            viewModel.SelectedHistoryItem = viewModel.SelectedTopicHistory.Single();
+            viewModel.ShowSelectedAsciiCommand.Execute(null);
+            window.UpdateLayout();
+
+            Assert.IsNotNull(rawButton);
+            Assert.IsNotNull(asciiButton);
+            Assert.IsTrue(viewModel.IsSelectedAsciiMode);
+            Assert.IsFalse(viewer.EnableChartActions);
+            StringAssert.Contains(viewer.Text, "High byte first (BE): Iv");
+            Assert.IsLessThanOrEqualTo(window.ActualWidth, window.DesiredSize.Width);
+            Assert.IsLessThanOrEqualTo(window.ActualHeight, window.DesiredSize.Height);
         });
     }
 

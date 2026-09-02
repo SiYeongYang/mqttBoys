@@ -772,43 +772,57 @@
                                                 Content="Charts"
                                                 Click="OpenChartsButton_Click"
                                                 Style="{StaticResource QuietButtonStyle}"
-                                                Margin="0,0,4,0"
+                                                Padding="6,4"
+                                                Margin="0,0,2,0"
                                                 ToolTip="Open the chart window" />
                                         <Button x:Name="ValuePauseButton"
                                                 Content="{Binding HistoryPauseButtonText}"
                                                 Command="{Binding ToggleHistoryPauseCommand}"
                                                 Style="{StaticResource QuietButtonStyle}"
-                                                Margin="0,0,4,0" />
+                                                Padding="6,4"
+                                                Margin="0,0,2,0" />
                                         <Button Content="Copy"
                                                  Command="{Binding CopyValueCommand}"
+                                                 Padding="6,4"
                                                  Style="{StaticResource QuietButtonStyle}" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="Value"
                                                    Style="{StaticResource SectionTitleStyle}"
-                                                   Margin="0,0,10,0" />
+                                                   Margin="0,0,6,0" />
                                         <RadioButton x:Name="ValueRawModeButton"
                                                      GroupName="ValueViewMode"
                                                      Content="Raw"
                                                      IsChecked="{Binding IsValueRawMode, Mode=OneWay}"
                                                      Command="{Binding ShowValueRawCommand}"
+                                                     Padding="5,3"
                                                      Style="{StaticResource ViewModeButtonStyle}" />
                                         <RadioButton x:Name="ValueDiffModeButton"
                                                      GroupName="ValueViewMode"
                                                      Content="Diff"
                                                      IsChecked="{Binding IsValueDiffMode, Mode=OneWay}"
                                                      Command="{Binding ShowValueDiffCommand}"
+                                                     Padding="5,3"
                                                      Style="{StaticResource ViewModeButtonStyle}"
                                                      Margin="3,0,0,0"
                                                      ToolTip="Compare Value with the immediately previous message" />
+                                        <RadioButton x:Name="ValueAsciiModeButton"
+                                                     GroupName="ValueViewMode"
+                                                     Content="ASCII"
+                                                     IsChecked="{Binding IsValueAsciiMode, Mode=OneWay}"
+                                                     Command="{Binding ShowValueAsciiCommand}"
+                                                     Padding="5,3"
+                                                     Style="{StaticResource ViewModeButtonStyle}"
+                                                     Margin="3,0,0,0"
+                                                     ToolTip="Decode 16-bit numbers in both byte orders" />
                                     </StackPanel>
                                 </DockPanel>
                                 <Grid Grid.Row="1">
                                     <controls:JsonPayloadViewer x:Name="ValuePayloadViewer"
-                                                                Text="{Binding ValuePayloadText, Mode=OneWay}"
-                                                                EnableChartActions="True"
+                                                                Text="{Binding ValueDisplayText, Mode=OneWay}"
+                                                                EnableChartActions="{Binding IsValueRawMode, Mode=OneWay}"
                                                                 ChartRequested="PayloadViewer_ChartRequested"
-                                                                Visibility="{Binding IsValueRawMode, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                Visibility="{Binding IsValueTextMode, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                                 FontFamily="Consolas"
                                                                 FontSize="12"
                                                                 VerticalScrollBarVisibility="Auto"
@@ -863,15 +877,32 @@
                                                 Command="{Binding CopySelectedCommand}"
                                                 Style="{StaticResource QuietButtonStyle}" />
                                     </StackPanel>
-                                    <TextBlock Text="Selected"
-                                               Style="{StaticResource SectionTitleStyle}" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Selected"
+                                                   Style="{StaticResource SectionTitleStyle}"
+                                                   Margin="0,0,10,0" />
+                                        <RadioButton x:Name="SelectedRawModeButton"
+                                                     GroupName="SelectedViewMode"
+                                                     Content="Raw"
+                                                     IsChecked="{Binding IsSelectedRawMode, Mode=OneWay}"
+                                                     Command="{Binding ShowSelectedRawCommand}"
+                                                     Style="{StaticResource ViewModeButtonStyle}" />
+                                        <RadioButton x:Name="SelectedAsciiModeButton"
+                                                     GroupName="SelectedViewMode"
+                                                     Content="ASCII"
+                                                     IsChecked="{Binding IsSelectedAsciiMode, Mode=OneWay}"
+                                                     Command="{Binding ShowSelectedAsciiCommand}"
+                                                     Style="{StaticResource ViewModeButtonStyle}"
+                                                     Margin="3,0,0,0"
+                                                     ToolTip="Decode 16-bit numbers in both byte orders" />
+                                    </StackPanel>
                                 </DockPanel>
                                 <Grid x:Name="SelectedContentGrid"
                                       Grid.Row="1"
                                       ClipToBounds="True">
                                     <controls:JsonPayloadViewer x:Name="SelectedPayloadViewer"
-                                                                Text="{Binding SelectedPayloadText, Mode=OneWay}"
-                                                                EnableChartActions="True"
+                                                                Text="{Binding SelectedDisplayText, Mode=OneWay}"
+                                                                EnableChartActions="{Binding IsSelectedRawMode, Mode=OneWay}"
                                                                 ChartRequested="PayloadViewer_ChartRequested"
                                                                 SearchStateChanged="SelectedPayloadViewer_SearchStateChanged"
                                                                 FontFamily="Consolas"
