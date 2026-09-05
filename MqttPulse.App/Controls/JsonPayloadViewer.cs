@@ -29,6 +29,7 @@ public sealed class JsonPayloadViewer : RichTextBox
     private bool _searchResultsTruncated;
     private bool _bringActiveSearchMatchIntoView;
     private bool _rendering;
+    private double _naturalWidth;
 
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
         nameof(Text),
@@ -42,6 +43,33 @@ public sealed class JsonPayloadViewer : RichTextBox
         typeof(JsonPayloadViewer),
         new FrameworkPropertyMetadata(false, OnEnableChartActionsChanged));
 
+    public static readonly DependencyProperty WordWrapProperty = DependencyProperty.Register(
+        nameof(WordWrap), typeof(bool), typeof(JsonPayloadViewer),
+        new FrameworkPropertyMetadata(false, (d, _) => ((JsonPayloadViewer)d).UpdateDocumentWidth()));
+
+    public static readonly DependencyProperty IsActiveProperty = DependencyProperty.Register(
+        nameof(IsActive), typeof(bool), typeof(JsonPayloadViewer),
+        new FrameworkPropertyMetadata(true, (d, _) =>
+        {
+            var viewer = (JsonPayloadViewer)d;
+            if (viewer.IsActive)
+            {
+                viewer.Render(viewer.Text);
+            }
+        }));
+
+    public bool IsActive
+    {
+        get => (bool)GetValue(IsActiveProperty);
+        set => SetValue(IsActiveProperty, value);
+    }
+
+    public bool WordWrap
+    {
+        get => (bool)GetValue(WordWrapProperty);
+        set => SetValue(WordWrapProperty, value);
+    }
+
     public JsonPayloadViewer()
     {
         IsReadOnly = true;
@@ -52,6 +80,7 @@ public sealed class JsonPayloadViewer : RichTextBox
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
         Document = CreateDocument(string.Empty);
+        SizeChanged += (_, _) => UpdateDocumentWidth();
     }
 
     public string Text
@@ -199,20 +228,20 @@ public sealed class JsonPayloadViewer : RichTextBox
 
     private void Render(string text)
     {
-        if (_rendering)
+        if (_rendering || !IsActive)
         {
             return;
         }
 
         var verticalOffset = VerticalOffset;
         var horizontalOffset = HorizontalOffset;
-        var wasAtBottom = IsNearBottom();
 
         try
         {
             _rendering = true;
             _searchMatchRuns.Clear();
             var paragraph = CreateParagraph(text);
+            UpdateDocumentWidth();
             BeginChange();
             try
             {
@@ -238,21 +267,12 @@ public sealed class JsonPayloadViewer : RichTextBox
                 return;
             }
 
-            if (wasAtBottom)
-            {
-                ScrollToEnd();
-                return;
-            }
-
             ScrollToVerticalOffset(Math.Max(0, verticalOffset));
             ScrollToHorizontalOffset(Math.Max(0, horizontalOffset));
         });
     }
 
-    private bool IsNearBottom()
-    {
-        return ExtentHeight <= 0 || VerticalOffset + ViewportHeight >= ExtentHeight - 2;
-    }
+    private void UpdateDocumentWidth() => PayloadDocumentLayout.ApplyWidth(this, _naturalWidth, WordWrap);
 
     private FlowDocument CreateDocument(string text)
     {
@@ -260,8 +280,7 @@ public sealed class JsonPayloadViewer : RichTextBox
         {
             PagePadding = new Thickness(8, 4, 8, 4),
             FontFamily = FontFamily,
-            FontSize = FontSize,
-            PageWidth = 4096
+            FontSize = FontSize
         };
     }
 
@@ -271,9 +290,12 @@ public sealed class JsonPayloadViewer : RichTextBox
             && text.Length <= InteractiveLimit
             && JsonDisplayFormatter.TryBuild(text, out var lines))
         {
+            _naturalWidth = PayloadDocumentLayout.MeasureWidth(
+                this, string.Join(Environment.NewLine, lines.Select(line => line.Text)), prefixCharacters: 2);
             return CreateInteractiveParagraph(lines);
         }
 
+        _naturalWidth = PayloadDocumentLayout.MeasureWidth(this, text);
         var paragraph = new Paragraph
         {
             Margin = new Thickness(0),

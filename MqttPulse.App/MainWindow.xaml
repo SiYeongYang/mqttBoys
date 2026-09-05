@@ -206,6 +206,51 @@
             <Setter Property="Padding" Value="9,4" />
         </Style>
 
+        <Style x:Key="IconButtonStyle" TargetType="Button" BasedOn="{StaticResource QuietButtonStyle}">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding ToolTip, RelativeSource={RelativeSource Self}}" />
+        </Style>
+
+        <Style x:Key="WrapButtonStyle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="FontFamily" Value="Segoe UI Symbol" />
+            <Setter Property="FontSize" Value="17" />
+            <Setter Property="Content" Value="&#x21B5;" />
+            <Setter Property="ToolTip" Value="Word wrap" />
+            <Setter Property="AutomationProperties.Name" Value="Word wrap" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource BorderBrushStrong}" />
+                </Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="ViewModeButtonStyle" TargetType="RadioButton">
             <Setter Property="MinHeight" Value="26" />
             <Setter Property="Padding" Value="8,3" />
@@ -667,11 +712,28 @@
                         </Button.ContextMenu>
                     </Button>
 
-                    <TextBox x:Name="HeaderSearchInput"
-                             Grid.Column="3"
-                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                             ToolTip="Topic search"
-                             Margin="0,0,12,0" />
+                    <Grid x:Name="HeaderSearchHost" Grid.Column="3" Margin="0,0,12,0">
+                        <TextBox x:Name="HeaderSearchInput"
+                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 Padding="28,5,28,5" ToolTip="Search topics" AutomationProperties.Name="Search topics" />
+                        <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" Margin="9,0,0,0"
+                                   VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" IsHitTestVisible="False" />
+                        <TextBlock Text="Search topics" Margin="29,0,28,0" VerticalAlignment="Center"
+                                   Foreground="{StaticResource MutedBrush}" IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=HeaderSearchInput}" Value="">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <Button HorizontalAlignment="Right" Style="{StaticResource IconButtonStyle}" Content="&#xE711;"
+                                ToolTip="Clear topic search" Click="ClearSearch_Click" Tag="HeaderSearchInput" />
+                    </Grid>
 
                     <TextBlock x:Name="ConnectedBrokerCaption"
                                Grid.Column="5"
@@ -691,12 +753,27 @@
                 </Grid>
             </Border>
 
+            <Border DockPanel.Dock="Bottom" Height="24" Padding="14,0" Background="{StaticResource SurfaceAltBrush}"
+                    BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,1,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="MainStatusText" Text="{Binding StatusMessage}" FontSize="11.5"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding StatusMessage}" />
+                    <TextBlock Grid.Column="1" Text="{Binding SelectedTopic.FullTopic}" MaxWidth="430" Margin="18,0,0,0"
+                               FontSize="11.5" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" ToolTip="{Binding SelectedTopic.FullTopic}" />
+                </Grid>
+            </Border>
+
             <Grid x:Name="MainContentGrid"
                   Margin="8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="30*" MinWidth="300" />
+                    <ColumnDefinition Width="26*" MinWidth="260" />
                     <ColumnDefinition Width="8" />
-                    <ColumnDefinition Width="70*" MinWidth="640" />
+                    <ColumnDefinition Width="74*" MinWidth="640" />
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0"
@@ -753,9 +830,9 @@
 
                         <Grid Grid.Row="0">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" MinWidth="145" />
+                                <ColumnDefinition Width="*" MinWidth="316" />
                                 <ColumnDefinition Width="7" />
-                                <ColumnDefinition Width="*" MinWidth="145" />
+                                <ColumnDefinition Width="*" MinWidth="272" />
                             </Grid.ColumnDefinitions>
 
                             <Grid x:Name="ValuePanel"
@@ -769,22 +846,21 @@
                                     <StackPanel DockPanel.Dock="Right"
                                                 Orientation="Horizontal">
                                         <Button x:Name="ValueChartButton"
-                                                Content="Charts"
+                                                Content="&#xE9D9;"
                                                 Click="OpenChartsButton_Click"
-                                                Style="{StaticResource QuietButtonStyle}"
-                                                Padding="6,4"
-                                                Margin="0,0,2,0"
+                                                Style="{StaticResource IconButtonStyle}"
                                                 ToolTip="Open the chart window" />
+                                        <ToggleButton x:Name="ValueWrapButton" Style="{StaticResource WrapButtonStyle}" />
                                         <Button x:Name="ValuePauseButton"
                                                 Content="{Binding HistoryPauseButtonText}"
                                                 Command="{Binding ToggleHistoryPauseCommand}"
                                                 Style="{StaticResource QuietButtonStyle}"
                                                 Padding="6,4"
                                                 Margin="0,0,2,0" />
-                                        <Button Content="Copy"
+                                        <Button x:Name="ValueCopyButton" Content="&#xE8C8;"
                                                  Command="{Binding CopyValueCommand}"
-                                                 Padding="6,4"
-                                                 Style="{StaticResource QuietButtonStyle}" />
+                                                 ToolTip="Copy Value"
+                                                 Style="{StaticResource IconButtonStyle}" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="Value"
@@ -819,6 +895,8 @@
                                 </DockPanel>
                                 <Grid Grid.Row="1">
                                     <controls:JsonPayloadViewer x:Name="ValuePayloadViewer"
+                                                                WordWrap="{Binding IsChecked, ElementName=ValueWrapButton}"
+                                                                IsActive="{Binding IsValueTextMode}"
                                                                 Text="{Binding ValueDisplayText, Mode=OneWay}"
                                                                 EnableChartActions="{Binding IsValueRawMode, Mode=OneWay}"
                                                                 ChartRequested="PayloadViewer_ChartRequested"
@@ -831,6 +909,7 @@
                                                                 Background="{StaticResource CodeBackgroundBrush}"
                                                                 ToolTip="Shift + 마우스 휠로 좌우 이동" />
                                     <controls:JsonDiffViewer x:Name="ValueDiffViewer"
+                                                             WordWrap="{Binding IsChecked, ElementName=ValueWrapButton}"
                                                              BaselineText="{Binding PreviousValuePayloadText, Mode=OneWay}"
                                                              CurrentText="{Binding ValuePayloadText, Mode=OneWay}"
                                                              IsActive="{Binding IsValueDiffMode, Mode=OneWay}"
@@ -853,7 +932,7 @@
                                           ShowsPreview="True"
                                           Cursor="SizeWE" />
 
-                            <Grid Grid.Column="2">
+                            <Grid x:Name="SelectedPanel" Grid.Column="2">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
@@ -861,21 +940,17 @@
                                 <DockPanel Margin="0,0,0,9">
                                     <StackPanel DockPanel.Dock="Right"
                                                 Orientation="Horizontal">
+                                        <ToggleButton x:Name="SelectedWrapButton" Style="{StaticResource WrapButtonStyle}" />
                                         <Button x:Name="SelectedSearchButton"
-                                                Width="30"
-                                                MinHeight="0"
-                                                Padding="0"
-                                                Margin="0,0,4,0"
                                                 Command="{x:Static ApplicationCommands.Find}"
-                                                Style="{StaticResource QuietButtonStyle}"
-                                                FontFamily="Segoe MDL2 Assets"
-                                                FontSize="14"
+                                                Style="{StaticResource IconButtonStyle}"
                                                 Content="&#xE721;"
                                                 ToolTip="Find in Selected (Ctrl+F)"
                                                 AutomationProperties.Name="Find in Selected" />
-                                        <Button Content="Copy"
+                                        <Button x:Name="SelectedCopyButton" Content="&#xE8C8;"
                                                 Command="{Binding CopySelectedCommand}"
-                                                Style="{StaticResource QuietButtonStyle}" />
+                                                ToolTip="Copy Selected"
+                                                Style="{StaticResource IconButtonStyle}" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="Selected"
@@ -900,7 +975,13 @@
                                 <Grid x:Name="SelectedContentGrid"
                                       Grid.Row="1"
                                       ClipToBounds="True">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
                                     <controls:JsonPayloadViewer x:Name="SelectedPayloadViewer"
+                                                                Grid.Row="1"
+                                                                WordWrap="{Binding IsChecked, ElementName=SelectedWrapButton}"
                                                                 Text="{Binding SelectedDisplayText, Mode=OneWay}"
                                                                 EnableChartActions="{Binding IsSelectedRawMode, Mode=OneWay}"
                                                                 ChartRequested="PayloadViewer_ChartRequested"
@@ -914,31 +995,21 @@
                                                                 ToolTip="Shift + 마우스 휠로 좌우 이동" />
 
                                     <Border x:Name="SelectedSearchPanel"
-                                            Panel.ZIndex="10"
-                                            Width="344"
-                                            Height="40"
-                                            Margin="0,8,10,0"
-                                            Padding="4"
-                                            HorizontalAlignment="Right"
-                                            VerticalAlignment="Top"
+                                            Height="36"
+                                            Margin="0,0,0,5"
+                                            Padding="2"
                                             Visibility="Collapsed"
-                                            Background="White"
+                                            Background="{StaticResource SurfaceAltBrush}"
                                             BorderBrush="{StaticResource BorderBrushStrong}"
                                             BorderThickness="1"
-                                            CornerRadius="6">
-                                        <Border.Effect>
-                                            <DropShadowEffect BlurRadius="10"
-                                                              ShadowDepth="3"
-                                                              Opacity="0.18"
-                                                              Color="#14201E" />
-                                        </Border.Effect>
+                                            CornerRadius="4">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="64" />
-                                                <ColumnDefinition Width="30" />
-                                                <ColumnDefinition Width="30" />
-                                                <ColumnDefinition Width="30" />
+                                                <ColumnDefinition Width="Auto" MinWidth="48" />
+                                                <ColumnDefinition Width="28" />
+                                                <ColumnDefinition Width="28" />
+                                                <ColumnDefinition Width="28" />
                                             </Grid.ColumnDefinitions>
                                             <TextBox x:Name="SelectedSearchInput"
                                                      MinHeight="0"
@@ -953,6 +1024,7 @@
                                                     BorderBrush="{StaticResource BorderBrushSoft}"
                                                     BorderThickness="1,0,0,0">
                                                 <TextBlock x:Name="SelectedSearchResultText"
+                                                           Margin="5,0"
                                                            Text="0 / 0"
                                                            HorizontalAlignment="Center"
                                                            VerticalAlignment="Center"
@@ -961,7 +1033,7 @@
                                             </Border>
                                             <Button x:Name="SelectedSearchPreviousButton"
                                                     Grid.Column="2"
-                                                    Width="30"
+                                                    Width="28"
                                                     Height="30"
                                                     MinHeight="0"
                                                     Padding="0"
@@ -974,7 +1046,7 @@
                                                     AutomationProperties.Name="Previous search result" />
                                             <Button x:Name="SelectedSearchNextButton"
                                                     Grid.Column="3"
-                                                    Width="30"
+                                                    Width="28"
                                                     Height="30"
                                                     MinHeight="0"
                                                     Padding="0"
@@ -987,7 +1059,7 @@
                                                     AutomationProperties.Name="Next search result" />
                                             <Button x:Name="SelectedSearchCloseButton"
                                                     Grid.Column="4"
-                                                    Width="30"
+                                                    Width="28"
                                                     Height="30"
                                                     MinHeight="0"
                                                     Padding="0"
@@ -1040,7 +1112,7 @@
                                       BorderBrush="{StaticResource BorderBrushSoft}"
                                       RowHeight="28">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Time" Binding="{Binding ReceivedAtWithDeltaText}" Width="230" />
+                                    <DataGridTextColumn Header="Time" Binding="{Binding ReceivedAtWithDeltaText}" Width="300" />
                                     <DataGridTextColumn Header="Payload" Binding="{Binding PayloadPreview}" Width="*" />
                                 </DataGrid.Columns>
                             </DataGrid>
@@ -1154,9 +1226,9 @@
             </Grid>
         </DockPanel>
 
-        <Grid Visibility="{Binding ConnectionManagerVisibility}"
+        <Grid x:Name="ConnectionManagerPanel" Visibility="{Binding ConnectionManagerVisibility}"
               Background="#B3182422">
-            <Grid Width="1040"
+            <Grid x:Name="ConnectionManagerDialog" Width="1040"
                   Height="680"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
@@ -1207,6 +1279,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
@@ -1215,8 +1288,31 @@
                                        Style="{StaticResource SectionTitleStyle}"
                                        Margin="2,0,0,12" />
 
+                            <Grid Grid.Row="1" Margin="0,0,0,10">
+                                <TextBox x:Name="ProfileSearchInput" Text="{Binding ProfileSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                         Padding="28,5,28,5" ToolTip="Search names, folders and hosts"
+                                         AutomationProperties.Name="Search connections" />
+                                <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" Margin="9,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" IsHitTestVisible="False" />
+                                <TextBlock Text="Search connections" Margin="29,0,28,0" VerticalAlignment="Center"
+                                           Foreground="{StaticResource MutedBrush}" IsHitTestVisible="False">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=ProfileSearchInput}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Button HorizontalAlignment="Right" Style="{StaticResource IconButtonStyle}" Content="&#xE711;"
+                                        ToolTip="Clear connection search" Click="ClearSearch_Click" Tag="ProfileSearchInput" />
+                            </Grid>
+
                             <TreeView x:Name="ProfileTree"
-                                      Grid.Row="1"
+                                      Grid.Row="2"
                                       ItemsSource="{Binding ProfileTree}"
                                       ItemContainerStyle="{StaticResource ProfileTreeItemStyle}"
                                       SelectedItemChanged="ProfileTree_SelectedItemChanged"
@@ -1229,7 +1325,11 @@
                                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                       ScrollViewer.VerticalScrollBarVisibility="Auto" />
 
-                            <Grid Grid.Row="2" Margin="0,14,0,0">
+                            <TextBlock Grid.Row="2" Text="No matching connections" Margin="4,8,0,0"
+                                       Foreground="{StaticResource MutedBrush}" IsHitTestVisible="False"
+                                       Visibility="{Binding NoProfileMatches, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                            <Grid Grid.Row="3" Margin="0,14,0,0">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
@@ -1485,9 +1585,8 @@
                             BorderBrush="{StaticResource BorderBrushSoft}"
                             BorderThickness="0,1,0,0"
                             Padding="18,0">
-                        <StackPanel Orientation="Horizontal"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Center">
+                        <DockPanel VerticalAlignment="Center">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button Content="Save changes"
                                     Command="{Binding SaveProfilesCommand}"
                                     Margin="0,0,10,0" />
@@ -1496,6 +1595,10 @@
                                     Style="{StaticResource PrimaryButtonStyle}"
                                     MinWidth="116" />
                         </StackPanel>
+                            <TextBlock Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" Margin="0,0,20,0"
+                                       VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"
+                                       ToolTip="{Binding StatusMessage}" />
+                        </DockPanel>
                     </Border>
                 </Grid>
                 </Border>

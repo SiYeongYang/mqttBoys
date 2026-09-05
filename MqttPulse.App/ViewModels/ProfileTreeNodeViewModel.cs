@@ -8,6 +8,7 @@ public sealed class ProfileTreeNodeViewModel : ObservableObject
 {
     private bool _isExpanded;
     private bool _isSelected;
+    private bool _isSearchVisible = true;
     private ProfileNodeDropPosition _dropPosition;
 
     public ProfileTreeNodeViewModel(string name, string fullPath, BrokerProfile? profile)
@@ -24,6 +25,12 @@ public sealed class ProfileTreeNodeViewModel : ObservableObject
     public BrokerProfile? Profile { get; }
 
     public bool IsFolder => Profile is null;
+
+    public bool IsSearchVisible
+    {
+        get => _isSearchVisible;
+        set => SetProperty(ref _isSearchVisible, value);
+    }
 
     public bool IsExpanded
     {

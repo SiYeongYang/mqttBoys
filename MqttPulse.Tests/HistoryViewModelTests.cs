@@ -189,4 +189,25 @@ public sealed class HistoryViewModelTests
 
     private static MqttMessageSnapshot Message(string topic, string payload, string receivedAt) =>
         new(topic, payload, DateTimeOffset.Parse(receivedAt), Qos: 0, Retain: false);
+
+    [TestMethod]
+    public void RetainedSelectionRemainsDecodableAfterHistorySelectionIsCleared()
+    {
+        using var viewModel = new MainViewModel();
+        var message = Message("factory/device", "{\"value\":18806}", "2026-09-05T10:00:00+09:00");
+        viewModel.SelectedHistoryItem = new HistoryItemViewModel(message, null);
+        var original = viewModel.SelectedPayloadText;
+        viewModel.SelectedHistoryItem = null;
+        Assert.IsTrue(viewModel.ShowSelectedAsciiCommand.CanExecute(null));
+        viewModel.ShowSelectedAsciiCommand.Execute(null);
+        StringAssert.Contains(viewModel.SelectedDisplayText, "Iv");
+        viewModel.ShowSelectedRawCommand.Execute(null);
+        Assert.AreSame(original, viewModel.SelectedPayloadText);
+
+        viewModel.SelectedHistoryItem = new HistoryItemViewModel(message, null);
+        Assert.AreSame(original, viewModel.SelectedPayloadText, "Re-selecting the same snapshot must not format it again.");
+        viewModel.ClearTopicsCommand.Execute(null);
+        Assert.IsFalse(viewModel.ShowSelectedAsciiCommand.CanExecute(null));
+        Assert.AreEqual(string.Empty, viewModel.SelectedDisplayText);
+    }
 }

@@ -17,6 +17,17 @@ public sealed class JsonDiffViewer : RichTextBox
     private static readonly Brush RemovedBrush = Frozen("#A62E2E");
     private static readonly Brush RemovedBackgroundBrush = Frozen("#FDE2E2");
     private CancellationTokenSource? _renderCancellation;
+    private double _naturalWidth;
+
+    public static readonly DependencyProperty WordWrapProperty = DependencyProperty.Register(
+        nameof(WordWrap), typeof(bool), typeof(JsonDiffViewer),
+        new FrameworkPropertyMetadata(false, (d, _) => ((JsonDiffViewer)d).UpdateDocumentWidth()));
+
+    public bool WordWrap
+    {
+        get => (bool)GetValue(WordWrapProperty);
+        set => SetValue(WordWrapProperty, value);
+    }
 
     public static readonly DependencyProperty BaselineTextProperty = DependencyProperty.Register(
         nameof(BaselineText),
@@ -46,6 +57,7 @@ public sealed class JsonDiffViewer : RichTextBox
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
         Document = CreateDocument();
         RenderMessage("Waiting for the previous message.");
+        SizeChanged += (_, _) => UpdateDocumentWidth();
     }
 
     public string BaselineText
@@ -148,7 +160,6 @@ public sealed class JsonDiffViewer : RichTextBox
     {
         var verticalOffset = VerticalOffset;
         var horizontalOffset = HorizontalOffset;
-        var wasAtBottom = IsNearBottom();
         var document = CreateDocument();
 
         foreach (var line in result.Lines)
@@ -174,7 +185,10 @@ public sealed class JsonDiffViewer : RichTextBox
 
         document.Blocks.Add(summary);
         Document = document;
-        RestoreScroll(verticalOffset, horizontalOffset, wasAtBottom);
+        _naturalWidth = PayloadDocumentLayout.MeasureWidth(this,
+            new TextRange(document.ContentStart, document.ContentEnd).Text);
+        UpdateDocumentWidth();
+        RestoreScroll(verticalOffset, horizontalOffset);
     }
 
     private void RenderMessage(string message)
@@ -187,6 +201,8 @@ public sealed class JsonDiffViewer : RichTextBox
             FontSize = FontSize
         });
         Document = document;
+        _naturalWidth = PayloadDocumentLayout.MeasureWidth(this, message);
+        UpdateDocumentWidth();
     }
 
     private Paragraph CreateLine(JsonDiffLine line)
@@ -228,26 +244,16 @@ public sealed class JsonDiffViewer : RichTextBox
         {
             PagePadding = new Thickness(8, 4, 8, 4),
             FontFamily = FontFamily,
-            FontSize = FontSize,
-            PageWidth = 4096
+            FontSize = FontSize
         };
     }
 
-    private bool IsNearBottom()
-    {
-        return ExtentHeight <= 0 || VerticalOffset + ViewportHeight >= ExtentHeight - 2;
-    }
+    private void UpdateDocumentWidth() => PayloadDocumentLayout.ApplyWidth(this, _naturalWidth, WordWrap);
 
-    private void RestoreScroll(double verticalOffset, double horizontalOffset, bool wasAtBottom)
+    private void RestoreScroll(double verticalOffset, double horizontalOffset)
     {
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
-            if (wasAtBottom)
-            {
-                ScrollToEnd();
-                return;
-            }
-
             ScrollToVerticalOffset(Math.Max(0, verticalOffset));
             ScrollToHorizontalOffset(Math.Max(0, horizontalOffset));
         });

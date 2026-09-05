@@ -46,6 +46,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private HistoryItemViewModel? _selectedHistoryItem;
     private PeriodCheckHistoryItemViewModel? _selectedPeriodCheckHistoryItem;
     private string _searchText = string.Empty;
+    private string _profileSearchText = string.Empty;
+    private HashSet<string>? _profileSearchExpandedFolders;
     private string _selectedFolderPath = string.Empty;
     private string _selectedFolderName = string.Empty;
     private string _selectedProfileFolderPath = string.Empty;
@@ -90,6 +92,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private long _lastTopicVisualRefreshTimestamp;
     private ValueFormatRequest? _pendingValueFormatRequest;
     private MqttMessageSnapshot? _displayedValueMessage;
+    private MqttMessageSnapshot? _displayedSelectedMessage;
+    private bool _valueDirty;
+    private bool _historyDirty;
+    private int _detailGeneration;
+    private long _valueFormatVersion;
+    private long _lastAppliedValueVersion;
     private int _valueFormatWorkerRunning;
     private volatile bool _isDisposed;
 
@@ -127,7 +135,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ShowValueDiffCommand = new RelayCommand(ShowValueDiff);
         ShowValueAsciiCommand = new RelayCommand(ShowValueAscii, () => _displayedValueMessage is not null);
         ShowSelectedRawCommand = new RelayCommand(ShowSelectedRaw);
-        ShowSelectedAsciiCommand = new RelayCommand(ShowSelectedAscii, () => SelectedHistoryItem is not null);
+        ShowSelectedAsciiCommand = new RelayCommand(ShowSelectedAscii, () => _displayedSelectedMessage is not null);
         ToggleHistoryPauseCommand = new RelayCommand(ToggleHistoryPause);
         OpenConnectionManagerCommand = new AsyncRelayCommand(OpenConnectionManagerAsync, () => !IsBusy && !IsPeriodCheckRunning);
         CloseConnectionManagerCommand = new RelayCommand(CloseConnectionManager);
@@ -340,6 +348,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedTopic, value))
             {
+                _detailGeneration++;
+                _valueDirty = false;
+                _historyDirty = false;
                 HistoryPaused = false;
                 SetValueViewMode(PayloadViewMode.Raw);
                 SetSelectedViewMode(PayloadViewMode.Raw);
@@ -362,8 +373,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            if (value is not null)
+            if (value is not null && !ReferenceEquals(_displayedSelectedMessage, value.Message))
             {
+                _displayedSelectedMessage = value.Message;
                 SelectedPayloadText = FormatPayloadForDetail(value.Message);
                 if (IsSelectedAsciiMode)
                 {
@@ -385,6 +397,63 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 ApplyTopicFilter();
             }
         }
+    }
+
+    public string ProfileSearchText
+    {
+        get => _profileSearchText;
+        set
+        {
+            if (SetProperty(ref _profileSearchText, value))
+            {
+                ApplyProfileFilter();
+            }
+        }
+    }
+
+    public bool NoProfileMatches => ProfileTree.Count > 0 && ProfileTree.All(node => !node.IsSearchVisible);
+
+    private void ApplyProfileFilter()
+    {
+        var query = ProfileSearchText.Trim();
+        if (query.Length > 0)
+        {
+            _profileSearchExpandedFolders ??= CaptureExpandedProfileFolders(ProfileTree);
+        }
+
+        foreach (var node in ProfileTree)
+        {
+            FilterProfileNode(node, query, false);
+        }
+
+        if (query.Length == 0 && _profileSearchExpandedFolders is { } expanded)
+        {
+            RestoreExpandedProfileFolders(ProfileTree, expanded);
+            _profileSearchExpandedFolders = null;
+        }
+
+        OnPropertyChanged(nameof(NoProfileMatches));
+    }
+
+    private static bool FilterProfileNode(ProfileTreeNodeViewModel node, string query, bool parentMatches)
+    {
+        var matches = parentMatches || query.Length == 0
+            || node.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+            || node.FullPath.Contains(query, StringComparison.OrdinalIgnoreCase)
+            || node.DetailText.Contains(query, StringComparison.OrdinalIgnoreCase);
+        var childMatches = false;
+        foreach (var child in node.Children)
+        {
+            childMatches |= FilterProfileNode(child, query, matches);
+        }
+
+        node.IsSearchVisible = matches || childMatches;
+        if (query.Length > 0 && node.IsFolder)
+        {
+            node.IsExpanded = childMatches;
+        }
+
+        return node.IsSearchVisible;
     }
 
     public string SelectedFolderPath
@@ -1204,6 +1273,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private Task OpenConnectionManagerAsync()
     {
+        ProfileSearchText = string.Empty;
         RebuildProfileTree(preserveExpansion: false);
         RestoreProfileTreeSelection(_connectedProfile?.Id ?? SelectedProfile?.Id, null);
         IsConnectionManagerOpen = true;
@@ -1438,7 +1508,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void RebuildProfileTree(bool preserveExpansion = true)
     {
         var expandedFolders = preserveExpansion
-            ? CaptureExpandedProfileFolders(ProfileTree)
+            ? _profileSearchExpandedFolders ?? CaptureExpandedProfileFolders(ProfileTree)
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ProfileTree.Clear();
         foreach (var node in ProfileTreeBuilder.Build(Profiles, _profileFolderPaths, _profileTreeOrder))
@@ -1448,6 +1518,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         RestoreExpandedProfileFolders(ProfileTree, expandedFolders);
         RefreshFolderOptions();
+        ApplyProfileFilter();
     }
 
     private static HashSet<string> CaptureExpandedProfileFolders(
@@ -1763,6 +1834,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void ClearTopics()
     {
+        _detailGeneration++;
         ClearPendingMessages();
 
         _rootTopicsByName.Clear();
@@ -1783,6 +1855,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PreviousValuePayloadText = string.Empty;
         SelectedPayloadText = string.Empty;
         SelectedAsciiText = string.Empty;
+        _displayedSelectedMessage = null;
         SelectedTopicAveragePeriodText = "Avg -";
         ReceivedMessages = 0;
         PendingCount = 0;
@@ -1809,10 +1882,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void OnStatusChanged(string status)
     {
-        Application.Current.Dispatcher.BeginInvoke(() =>
+        if (_isDisposed || _dispatcher.HasShutdownStarted)
         {
-            StatusMessage = status;
-            IsConnected = _mqttClient.IsConnected;
+            return;
+        }
+
+        _dispatcher.BeginInvoke(() =>
+        {
+            if (!_isDisposed)
+            {
+                StatusMessage = status;
+                IsConnected = _mqttClient.IsConnected;
+            }
         });
     }
 
@@ -1821,6 +1902,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (_pendingMessages.IsEmpty)
         {
             FlushTopicVisualChanges();
+            RefreshDirtyDetail();
             return;
         }
 
@@ -1846,15 +1928,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ReceivedMessages += processed;
         PendingCount = Math.Max(0, Volatile.Read(ref _pendingQueueCount));
 
-        if (!FreezeDetail && !HistoryPaused && selectedTopicWasTouched)
+        _valueDirty |= selectedTopicWasTouched;
+        _historyDirty |= selectedTopicWasTouched;
+        RefreshDirtyDetail();
+    }
+
+    private void RefreshDirtyDetail()
+    {
+        if (!FreezeDetail && !HistoryPaused)
         {
-            if (ShouldRefreshValue())
+            if (_valueDirty && ShouldRefreshValue())
             {
+                _valueDirty = false;
                 QueueSelectedTopicValueRefresh();
             }
 
-            if (ShouldRefreshHistory())
+            if (_historyDirty && ShouldRefreshHistory())
             {
+                _historyDirty = false;
                 RefreshSelectedTopicHistory(keepCurrentSelection: true);
             }
 
@@ -2131,11 +2222,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         RefreshSelectedTopicHistory(keepCurrentSelection);
         RefreshSelectedTopicValue();
+        _valueDirty = false;
+        _historyDirty = false;
     }
 
     private void RefreshSelectedTopicHistory(bool keepCurrentSelection)
     {
-        var previousSelectedMessage = keepCurrentSelection ? SelectedHistoryItem?.Message : null;
+        var previousSelectedMessage = keepCurrentSelection ? _displayedSelectedMessage : null;
         SelectedTopicHistory.Clear();
 
         if (SelectedTopic is null)
@@ -2147,6 +2240,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             SelectedHistoryItem = null;
             SelectedPayloadText = string.Empty;
             SelectedAsciiText = string.Empty;
+            _displayedSelectedMessage = null;
+            ShowSelectedAsciiCommand.RaiseCanExecuteChanged();
             SelectedTopicAveragePeriodText = "Avg -";
             ShowValueAsciiCommand.RaiseCanExecuteChanged();
             return;
@@ -2177,6 +2272,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             SelectedHistoryItem = null;
             SelectedPayloadText = string.Empty;
             SelectedAsciiText = string.Empty;
+            _displayedSelectedMessage = null;
+            ShowSelectedAsciiCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -2184,6 +2281,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         MqttMessageSnapshot message,
         MqttMessageSnapshot? previousMessage)
     {
+        _lastAppliedValueVersion = ++_valueFormatVersion;
         _displayedValueMessage = message;
         ValuePayloadText = FormatPayloadForDetail(message);
         if (IsValueAsciiMode)
@@ -2217,6 +2315,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         var request = new ValueFormatRequest(
+            SelectedTopic,
+            _detailGeneration,
+            ++_valueFormatVersion,
+            _valueViewMode,
             message,
             IsValueDiffMode ? SelectedTopic.PreviousMessage : null,
             IsValueAsciiMode);
@@ -2258,8 +2360,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     if (!_isDisposed
                         && !FreezeDetail
                         && !HistoryPaused
-                        && ReferenceEquals(SelectedTopic?.LastMessage, request.Message))
+                        && request.Generation == _detailGeneration
+                        && request.Mode == _valueViewMode
+                        && request.Version > _lastAppliedValueVersion
+                        && ReferenceEquals(SelectedTopic, request.Topic))
                     {
+                        _lastAppliedValueVersion = request.Version;
                         _displayedValueMessage = request.Message;
                         ValuePayloadText = formatted;
                         PreviousValuePayloadText = IsValueDiffMode
@@ -2310,6 +2416,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         _valueViewMode = mode;
+        _detailGeneration++;
+        _valueDirty = true;
         if (mode != PayloadViewMode.Diff)
         {
             PreviousValuePayloadText = string.Empty;
@@ -2336,9 +2444,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         _selectedViewMode = mode;
-        if (mode == PayloadViewMode.Ascii && SelectedHistoryItem is { } selected)
+        if (mode == PayloadViewMode.Ascii && _displayedSelectedMessage is { } selected)
         {
-            SelectedAsciiText = PackedAsciiDecoder.Decode(selected.Message.PayloadText).DisplayText;
+            SelectedAsciiText = PackedAsciiDecoder.Decode(selected.PayloadText).DisplayText;
         }
 
         OnPropertyChanged(nameof(IsSelectedRawMode));
@@ -2558,6 +2666,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     private sealed record ValueFormatRequest(
+        TopicViewModel Topic,
+        int Generation,
+        long Version,
+        PayloadViewMode Mode,
         MqttMessageSnapshot Message,
         MqttMessageSnapshot? PreviousMessage,
         bool DecodeAscii);

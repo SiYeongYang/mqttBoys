@@ -10,6 +10,35 @@ namespace MqttPulse.Tests;
 public sealed class ConnectionManagerViewModelTests
 {
     [TestMethod]
+    public void ConnectionSearchFiltersHostsAndRestoresExpansionWithoutChangingSavedOrder()
+    {
+        var path = TempProfilePath();
+        try
+        {
+            var store = new ProfileStore(path);
+            var brokerA = Profile("Primary", "Factory/Line 1", 1883);
+            brokerA.Host = "edge.example.test";
+            store.Save(new[] { brokerA, Profile("Backup", "Lab", 1883) }, new[] { "Factory/Line 1", "Lab" });
+            using var viewModel = new MainViewModel(store);
+            var original = viewModel.ProfileTree.ToArray();
+            viewModel.ProfileSearchText = "EDGE.EXAMPLE";
+            Assert.IsTrue(original.Single(node => node.Name == "Factory").IsExpanded);
+            Assert.IsFalse(original.Single(node => node.Name == "Lab").IsSearchVisible);
+            Assert.IsFalse(viewModel.NoProfileMatches);
+            viewModel.ProfileSearchText = "no-such-connection";
+            Assert.IsTrue(viewModel.NoProfileMatches);
+            viewModel.ProfileSearchText = string.Empty;
+            Assert.IsTrue(original.All(node => node.IsSearchVisible && !node.IsExpanded));
+            CollectionAssert.AreEqual(original, viewModel.ProfileTree.ToArray());
+            Assert.AreEqual("Factory/Line 1", store.LoadLibrary().Profiles.Single(p => p.Id == brokerA.Id).FolderPath);
+        }
+        finally
+        {
+            DeleteProfileDirectory(path);
+        }
+    }
+
+    [TestMethod]
     public void MultipleProfilesRemainInSameFolderAndSelectedBrokerShowsFolder()
     {
         var path = Path.Combine(Path.GetTempPath(), $"mqttboys-{Guid.NewGuid():N}", "profiles.json");

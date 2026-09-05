@@ -19,6 +19,107 @@ namespace MqttPulse.Tests;
 public sealed class MainLayoutTests
 {
     [TestMethod]
+    public void LastBurstMessageReachesValueAndHistoryWithoutAnotherReceive()
+    {
+        RunInWindow(window =>
+        {
+            var vm = (MainViewModel)window.DataContext;
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var receive = typeof(MainViewModel).GetMethod("OnMessageReceived", flags)!;
+            var drain = typeof(MainViewModel).GetMethod("DrainPendingMessages", flags)!;
+            var first = Message("{\"value\":1}", "2026-09-05T10:00:00+09:00");
+            receive.Invoke(vm, new object[] { first });
+            drain.Invoke(vm, null);
+            vm.SelectedTopic = vm.FindLeafTopic(first.Topic);
+            var now = System.Diagnostics.Stopwatch.GetTimestamp();
+            typeof(MainViewModel).GetField("_lastValueRefreshTimestamp", flags)!.SetValue(vm, now);
+            typeof(MainViewModel).GetField("_lastHistoryRefreshTimestamp", flags)!.SetValue(vm, now);
+            receive.Invoke(vm, new object[] { Message("{\"value\":2}", "2026-09-05T10:00:01+09:00") });
+            drain.Invoke(vm, null);
+            Assert.AreEqual(0, vm.PendingCount);
+            PumpDispatcher(TimeSpan.FromMilliseconds(700));
+            StringAssert.Contains(vm.ValuePayloadText, "\"value\": 2");
+            Assert.HasCount(2, vm.SelectedTopicHistory);
+        });
+    }
+
+    [TestMethod]
+    public void CompletedValueFormatIsDisplayedWhileNewerMessagesArrive()
+    {
+        RunInWindow(window =>
+        {
+            var vm = (MainViewModel)window.DataContext;
+            var topic = new TopicViewModel("device", "factory/line/device", 10);
+            topic.Record(Message("{\"value\":1}", "2026-09-05T10:00:00+09:00"), true, true);
+            vm.SelectedTopic = topic;
+            topic.Record(Message("{\"value\":2}", "2026-09-05T10:00:01+09:00"), true, false);
+            typeof(MainViewModel).GetMethod("QueueSelectedTopicValueRefresh", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(vm, null);
+            topic.Record(Message("{\"value\":3}", "2026-09-05T10:00:02+09:00"), true, false);
+            PumpDispatcher(TimeSpan.FromMilliseconds(250));
+            StringAssert.Contains(vm.ValuePayloadText, "\"value\": 2");
+
+            typeof(MainViewModel).GetMethod("QueueSelectedTopicValueRefresh", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(vm, null);
+            var other = new TopicViewModel("other", "factory/other", 10);
+            other.Record(Message("{\"other\":42}", "2026-09-05T10:00:03+09:00"), true, true);
+            vm.SelectedTopic = other;
+            PumpDispatcher(TimeSpan.FromMilliseconds(250));
+            StringAssert.Contains(vm.ValuePayloadText, "\"other\": 42");
+        });
+    }
+
+    [TestMethod]
+    public void PayloadWidthWrapAndSearchDoNotCreateEmptyScrollSpaceOrCoverResults()
+    {
+        RunInWindow(window =>
+        {
+            var viewer = (JsonPayloadViewer)window.FindName("SelectedPayloadViewer");
+            viewer.Text = "{\"value\":42}";
+            PumpDispatcher(TimeSpan.FromMilliseconds(50));
+            Assert.IsLessThanOrEqualTo(viewer.ViewportWidth + 1, viewer.ExtentWidth);
+            viewer.Text = "{\"value\":\"" + new string('x', 400) + "\"}";
+            PumpDispatcher(TimeSpan.FromMilliseconds(50));
+            Assert.IsGreaterThan(viewer.ViewportWidth, viewer.ExtentWidth);
+            ((ToggleButton)window.FindName("SelectedWrapButton")).IsChecked = true;
+            PumpDispatcher(TimeSpan.FromMilliseconds(50));
+            Assert.IsTrue(viewer.WordWrap);
+            Assert.AreEqual(ScrollBarVisibility.Disabled, viewer.HorizontalScrollBarVisibility);
+
+            ApplicationCommands.Find.Execute(null, window);
+            window.UpdateLayout();
+            var search = (Border)window.FindName("SelectedSearchPanel");
+            var content = (Grid)window.FindName("SelectedContentGrid");
+            var viewerPosition = viewer.TranslatePoint(new Point(), content);
+            Assert.IsGreaterThanOrEqualTo(search.ActualHeight, viewerPosition.Y, "Search must occupy a separate row above the payload.");
+        });
+    }
+
+    [TestMethod]
+    public void PayloadRefreshKeepsReadingPositionAndInactiveViewerDefersRendering()
+    {
+        RunInWindow(window =>
+        {
+            var viewer = (JsonPayloadViewer)window.FindName("SelectedPayloadViewer");
+            var text = string.Join(Environment.NewLine, Enumerable.Range(0, 180).Select(i => $"line {i}"));
+            viewer.Text = text;
+            PumpDispatcher(TimeSpan.FromMilliseconds(50));
+            Assert.AreEqual(0, viewer.VerticalOffset, 1);
+            viewer.ScrollToVerticalOffset(180);
+            PumpDispatcher(TimeSpan.FromMilliseconds(50));
+            var offset = viewer.VerticalOffset;
+            viewer.Text = text + Environment.NewLine + "last line";
+            PumpDispatcher(TimeSpan.FromMilliseconds(50));
+            Assert.AreEqual(offset, viewer.VerticalOffset, 1);
+
+            viewer.IsActive = false;
+            var block = viewer.Document.Blocks.FirstBlock;
+            viewer.Text = "new hidden value";
+            Assert.AreSame(block, viewer.Document.Blocks.FirstBlock);
+            viewer.IsActive = true;
+            StringAssert.Contains(new TextRange(viewer.Document.ContentStart, viewer.Document.ContentEnd).Text, "new hidden value");
+        });
+    }
+
+    [TestMethod]
     public void DefaultLayoutKeepsTopicsMuchNarrowerThanDetailAtDesktopAndLaptopWidths()
     {
         RunInWindow(window =>
@@ -136,7 +237,7 @@ public sealed class MainLayoutTests
             var detail = (Grid)window.FindName("MainDetailGrid");
             var publishPayload = (TextBox)window.FindName("PublishPayloadInput");
 
-            Assert.AreEqual(3, Grid.GetColumn(search));
+            Assert.AreEqual(3, Grid.GetColumn((FrameworkElement)search.Parent));
             Assert.AreEqual(5, Grid.GetColumn(caption));
             Assert.AreEqual(6, Grid.GetColumn(connection));
             Assert.IsTrue(chart.IsDescendantOf(valuePanel));

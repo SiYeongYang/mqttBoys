@@ -22,10 +22,14 @@ public partial class MainWindow : Window
     private bool _suppressSelectedSearchTextChanged;
     private ChartDashboardWindow? _chartWindow;
 
-    public MainWindow()
+    public MainWindow() : this(new MainViewModel())
+    {
+    }
+
+    public MainWindow(MainViewModel viewModel)
     {
         InitializeComponent();
-        _viewModel = new MainViewModel();
+        _viewModel = viewModel;
         DataContext = _viewModel;
         _selectedSearchDebounceTimer.Tick += SelectedSearchDebounceTimer_Tick;
         Closed += MainWindow_Closed;
@@ -118,6 +122,15 @@ public partial class MainWindow : Window
     {
         OpenSelectedSearch();
         e.Handled = true;
+    }
+
+    private void ClearSearch_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string name } && FindName(name) is TextBox input)
+        {
+            input.Clear();
+            input.Focus();
+        }
     }
 
     private void OpenSelectedSearch()
