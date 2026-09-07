@@ -10,6 +10,8 @@ internal static class PayloadDocumentLayout
     {
         var typeface = new Typeface(viewer.FontFamily, viewer.FontStyle, viewer.FontWeight, viewer.FontStretch);
         typeface.TryGetGlyphTypeface(out var glyphs);
+        var pixelsPerDip = VisualTreeHelper.GetDpi(viewer).PixelsPerDip;
+        var useDisplayMetrics = TextOptions.GetTextFormattingMode(viewer) == TextFormattingMode.Display;
         var space = GlyphWidth(' ');
         var prefix = prefixCharacters * space;
         var longest = prefix;
@@ -33,10 +35,16 @@ internal static class PayloadDocumentLayout
 
         return Math.Ceiling(Math.Max(longest, current)) + 24;
 
-        double GlyphWidth(char character) => glyphs is not null
-            && glyphs.CharacterToGlyphMap.TryGetValue(character, out var glyph)
+        double GlyphWidth(char character)
+        {
+            var width = glyphs is not null && glyphs.CharacterToGlyphMap.TryGetValue(character, out var glyph)
                 ? glyphs.AdvanceWidths[glyph] * viewer.FontSize
                 : viewer.FontSize;
+            // Display formatting rounds glyph advances to physical pixels, not just the final line width.
+            return useDisplayMetrics
+                ? Math.Round(width * pixelsPerDip, MidpointRounding.AwayFromZero) / pixelsPerDip
+                : width;
+        }
     }
 
     public static void ApplyWidth(RichTextBox viewer, double naturalWidth, bool wrap)

@@ -19,6 +19,41 @@ namespace MqttPulse.Tests;
 public sealed class MainLayoutTests
 {
     [TestMethod]
+    public void PayloadActionsDoNotIndentJsonOrWrapAnOtherwiseFittingString()
+    {
+        RunInWindow(window =>
+        {
+            foreach (var name in new[] { "ValuePayloadViewer", "SelectedPayloadViewer" })
+            {
+                var viewer = (JsonPayloadViewer)window.FindName(name);
+                const string identifier = "DEVICE_01/FACTORY_LINE_UNIT_0014_D0";
+                const string json = "{\"Messages\":{\"Payload\":[{\"NodeIdentifier\":\"" + identifier + "\",\"Value\":\"181\"}]}}";
+                viewer.HorizontalAlignment = HorizontalAlignment.Left;
+                viewer.Width = 480;
+                viewer.WordWrap = true;
+                viewer.Text = json;
+                PumpDispatcher(TimeSpan.FromMilliseconds(70));
+                var paragraph = viewer.Document.Blocks.OfType<Paragraph>().Single();
+                Assert.AreEqual("{", ((Run)paragraph.Inlines.FirstInline).Text);
+                var valueRun = paragraph.Inlines.OfType<Run>().Single(run => run.Text.Contains(identifier, StringComparison.Ordinal));
+                var first = valueRun.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+                var last = valueRun.ContentEnd.GetCharacterRect(LogicalDirection.Backward);
+                Assert.AreEqual(first.Y, last.Y, 1, "A fitting identifier must stay on a single line.");
+                var ascii = paragraph.Inlines.OfType<Hyperlink>().Single(link => link.Tag is JsonAsciiTarget);
+                var scalar = paragraph.Inlines.OfType<Run>().Single(run => run.Text == "\"181\"");
+                Assert.IsLessThan(0, scalar.ContentEnd.CompareTo(ascii.ContentStart), "Field actions belong after the JSON value.");
+
+                viewer.WordWrap = false;
+                viewer.Width = 300;
+                PumpDispatcher(TimeSpan.FromMilliseconds(70));
+                first = valueRun.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+                last = valueRun.ContentEnd.GetCharacterRect(LogicalDirection.Backward);
+                Assert.AreEqual(first.Y, last.Y, 1, "No-wrap must measure the rendered glyph widths without splitting the tail.");
+            }
+        });
+    }
+
+    [TestMethod]
     public void LastBurstMessageReachesValueAndHistoryWithoutAnotherReceive()
     {
         RunInWindow(window =>

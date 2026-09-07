@@ -356,7 +356,9 @@ public sealed class JsonPayloadViewer : RichTextBox
         if (_displayLines is { } lines)
         {
             _naturalWidth = PayloadDocumentLayout.MeasureWidth(
-                this, DisplayText, prefixCharacters: 6);
+                this, string.Join(Environment.NewLine, lines.Select(line =>
+                    line.Text + (line.Metric is null ? string.Empty : " ↗")
+                    + (line.AsciiTarget is null ? string.Empty : " A "))));
             return CreateInteractiveParagraph(lines);
         }
 
@@ -393,8 +395,11 @@ public sealed class JsonPayloadViewer : RichTextBox
         for (var index = 0; index < lines.Count; index++)
         {
             var line = lines[index];
+            AddJsonRuns(paragraph, line.Text, textOffset);
+
             if (line.Metric is { } metric)
             {
+                paragraph.Inlines.Add(new Run(" "));
                 var action = new Hyperlink(new Run("↗"))
                 {
                     Tag = metric,
@@ -406,11 +411,6 @@ public sealed class JsonPayloadViewer : RichTextBox
                 };
                 action.Click += ChartAction_Click;
                 paragraph.Inlines.Add(action);
-                paragraph.Inlines.Add(new Run(" "));
-            }
-            else
-            {
-                paragraph.Inlines.Add(new Run("  "));
             }
 
             if (line.AsciiTarget is { } target)
@@ -427,14 +427,8 @@ public sealed class JsonPayloadViewer : RichTextBox
                 };
                 action.Click += AsciiAction_Click;
                 paragraph.Inlines.Add(action);
-                paragraph.Inlines.Add(new Run(" "));
-            }
-            else
-            {
-                paragraph.Inlines.Add(new Run("    "));
             }
 
-            AddJsonRuns(paragraph, line.Text, textOffset);
             if (index < lines.Count - 1)
             {
                 paragraph.Inlines.Add(new LineBreak());
