@@ -337,7 +337,7 @@ public sealed class MainLayoutTests
                 viewer.UpdateLayout();
 
                 var paragraph = viewer.Document.Blocks.OfType<Paragraph>().Single();
-                var actions = paragraph.Inlines.OfType<Hyperlink>().ToArray();
+                var actions = paragraph.Inlines.OfType<Hyperlink>().Where(action => action.Tag is JsonScalarMetric).ToArray();
                 var metrics = actions.Select(action => (JsonScalarMetric)action.Tag).ToArray();
 
                 Assert.IsTrue(viewer.EnableChartActions);
@@ -458,70 +458,72 @@ public sealed class MainLayoutTests
     }
 
     [TestMethod]
-    public void ValueModeButtonsSwitchBetweenRawDiffAndAsciiViews()
+    public void ValueModeButtonsSwitchBetweenRawAndDiffViews()
     {
         RunInWindow(window =>
         {
-            var viewModel = (MainViewModel)window.DataContext;
-            var raw = (JsonPayloadViewer)window.FindName("ValuePayloadViewer");
-            var diff = (JsonDiffViewer)window.FindName("ValueDiffViewer");
-
-            Assert.IsTrue(viewModel.IsValueRawMode);
-            Assert.AreEqual(Visibility.Visible, raw.Visibility);
-            Assert.AreEqual(Visibility.Collapsed, diff.Visibility);
-
-            viewModel.ShowValueDiffCommand.Execute(null);
+            var vm = (MainViewModel)window.DataContext;
+            vm.ShowValueDiffCommand.Execute(null);
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.DataBind);
-
-            Assert.AreEqual(Visibility.Collapsed, raw.Visibility);
-            Assert.AreEqual(Visibility.Visible, diff.Visibility);
-            Assert.IsTrue(diff.IsActive);
-
-            var topic = new TopicViewModel("device", "factory/line/device", historyCapacity: 10);
-            topic.Record(
-                Message("18806", "2026-07-27T12:00:00+09:00"),
-                isLeaf: true,
-                leafTopicWasNew: true);
-            viewModel.SelectedTopic = topic;
-            viewModel.ToggleHistoryPauseCommand.Execute(null);
-            viewModel.ShowValueAsciiCommand.Execute(null);
-            window.Dispatcher.Invoke(() => { }, DispatcherPriority.DataBind);
-
-            Assert.IsTrue(viewModel.IsValueAsciiMode);
-            Assert.AreEqual(Visibility.Visible, raw.Visibility);
-            Assert.AreEqual(Visibility.Collapsed, diff.Visibility);
-            StringAssert.Contains(raw.Text, "Byte-swapped (LE): vI");
+            Assert.AreEqual(Visibility.Collapsed, ((JsonPayloadViewer)window.FindName("ValuePayloadViewer")).Visibility);
+            Assert.IsTrue(((JsonDiffViewer)window.FindName("ValueDiffViewer")).IsActive);
+            Assert.IsNull(window.FindName("ValueAsciiModeButton"));
+            Assert.IsNull(window.FindName("SelectedAsciiModeButton"));
         });
     }
 
     [TestMethod]
-    public void SelectedHeaderOffersRawAndAsciiModesWithoutCrowdingMinimumViewport()
+    public void InlineAsciiMenuChangesOnlyTheChosenFieldAndCanRestoreOriginal()
     {
         RunInWindow(window =>
         {
-            window.Width = 1100;
-            window.Height = 720;
-            var viewModel = (MainViewModel)window.DataContext;
-            var rawButton = (RadioButton)window.FindName("SelectedRawModeButton");
-            var asciiButton = (RadioButton)window.FindName("SelectedAsciiModeButton");
-            var viewer = (JsonPayloadViewer)window.FindName("SelectedPayloadViewer");
-            var topic = new TopicViewModel("device", "factory/line/device", historyCapacity: 10);
-            topic.Record(
-                Message("18806", "2026-07-27T12:00:00+09:00"),
-                isLeaf: true,
-                leafTopicWasNew: true);
-            viewModel.SelectedTopic = topic;
-            viewModel.SelectedHistoryItem = viewModel.SelectedTopicHistory.Single();
-            viewModel.ShowSelectedAsciiCommand.Execute(null);
-            window.UpdateLayout();
+            foreach (var viewerName in new[] { "ValuePayloadViewer", "SelectedPayloadViewer" })
+            {
+                var viewer = (JsonPayloadViewer)window.FindName(viewerName);
+                const string original = "{\"SEND_TIME\":1788741127078,\"HEALTH\":[{\"test\":\"18806\"}],\"other\":123}";
+                viewer.Text = original;
+                window.UpdateLayout();
+                var action = viewer.Document.Blocks.OfType<Paragraph>().Single().Inlines.OfType<Hyperlink>()
+                    .Single(link => link.Tag is JsonAsciiTarget { Pointer: "/HEALTH/0/test" });
+                action.RaiseEvent(new RoutedEventArgs(Hyperlink.ClickEvent));
+                var menu = action.ContextMenu!;
+                Assert.HasCount(4, menu.Items);
+                menu.IsOpen = false;
+                ((MenuItem)menu.Items[0]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                using (var doc = System.Text.Json.JsonDocument.Parse(viewer.DisplayText))
+                {
+                    Assert.AreEqual("vI", doc.RootElement.GetProperty("HEALTH")[0].GetProperty("test").GetString());
+                    Assert.AreEqual(1788741127078L, doc.RootElement.GetProperty("SEND_TIME").GetInt64());
+                    Assert.AreEqual(123, doc.RootElement.GetProperty("other").GetInt32());
+                }
+                Assert.AreEqual(original, viewer.Text);
+                viewer.SetFieldAscii("/HEALTH/0/test", AsciiByteOrder.BigEndian);
+                StringAssert.Contains(viewer.DisplayText, "\"test\": \"Iv\"");
+                viewer.SetFieldAscii("/HEALTH/0/test", null);
+                StringAssert.Contains(viewer.DisplayText, "\"test\": \"18806\"");
+            }
+        });
+    }
 
-            Assert.IsNotNull(rawButton);
-            Assert.IsNotNull(asciiButton);
-            Assert.IsTrue(viewModel.IsSelectedAsciiMode);
-            Assert.IsFalse(viewer.EnableChartActions);
-            StringAssert.Contains(viewer.Text, "High byte first (BE): Iv");
-            Assert.IsLessThanOrEqualTo(window.ActualWidth, window.DesiredSize.Width);
-            Assert.IsLessThanOrEqualTo(window.ActualHeight, window.DesiredSize.Height);
+    [TestMethod]
+    public void InlineAsciiFollowsMessagesSupportsSearchAndCopyAndResetsOnTopicChange()
+    {
+        RunInWindow(window =>
+        {
+            var viewer = (JsonPayloadViewer)window.FindName("SelectedPayloadViewer");
+            viewer.InspectionScope = new object();
+            viewer.Text = "{\"test\":18806,\"other\":18806}";
+            viewer.SetFieldAscii("/test", AsciiByteOrder.LittleEndian);
+            viewer.SetSearchQuery("vI");
+            Assert.AreEqual(1, viewer.SearchMatchCount);
+            viewer.Text = "{\"test\":18501,\"other\":18806}";
+            StringAssert.Contains(viewer.DisplayText, "\"test\": \"EH\"");
+            StringAssert.Contains(viewer.DisplayText, "\"other\": 18806");
+            Assert.AreEqual(0, viewer.SearchMatchCount);
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.DataBind);
+            Assert.AreEqual(viewer.DisplayText, ((Button)window.FindName("SelectedCopyButton")).CommandParameter);
+            viewer.InspectionScope = new object();
+            StringAssert.Contains(viewer.DisplayText, "\"test\": 18501");
         });
     }
 

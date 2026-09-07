@@ -97,52 +97,36 @@ public sealed class CoreModelTests
     }
 
     [TestMethod]
-    public void PackedAsciiDecoderShowsBothByteOrdersForSingleRegister()
+    public void PackedAsciiDecoderReadsBothByteOrdersOfOneValue()
     {
-        var decoded = PackedAsciiDecoder.Decode("18806");
-
-        Assert.AreEqual(1, decoded.WordCount);
-        Assert.AreEqual("Iv", decoded.HighByteFirstText);
-        Assert.AreEqual("vI", decoded.ByteSwappedText);
-        StringAssert.Contains(decoded.DisplayText, "0x4976");
-        StringAssert.Contains(decoded.DisplayText, "High byte first (BE): Iv");
-        StringAssert.Contains(decoded.DisplayText, "Byte-swapped (LE): vI");
+        using var doc = System.Text.Json.JsonDocument.Parse("18806");
+        Assert.IsTrue(PackedAsciiDecoder.TryDecode(doc.RootElement, AsciiByteOrder.BigEndian, out var be));
+        Assert.IsTrue(PackedAsciiDecoder.TryDecode(doc.RootElement, AsciiByteOrder.LittleEndian, out var le));
+        Assert.AreEqual("Iv", be);
+        Assert.AreEqual("vI", le);
     }
 
     [TestMethod]
-    public void PackedAsciiDecoderCombinesJsonArrayWordsAndKeepsPaths()
+    public void PackedAsciiDecoderReadsOneArrayAndPreservesControlCharacters()
     {
-        var decoded = PackedAsciiDecoder.Decode(
-            "{\"values\":[18501,19532,20257]}");
-
-        Assert.AreEqual(3, decoded.WordCount);
-        Assert.AreEqual("HELLO!", decoded.HighByteFirstText);
-        Assert.AreEqual("EHLL!O", decoded.ByteSwappedText);
-        StringAssert.Contains(decoded.DisplayText, "$.values[0]");
-        StringAssert.Contains(decoded.DisplayText, "$.values[2]");
+        using var doc = System.Text.Json.JsonDocument.Parse("[18501,19532,20257]");
+        Assert.IsTrue(PackedAsciiDecoder.TryDecode(doc.RootElement, AsciiByteOrder.BigEndian, out var text));
+        Assert.AreEqual("HELLO!", text);
+        using var scalar = System.Text.Json.JsonDocument.Parse("\"1\"");
+        Assert.IsTrue(PackedAsciiDecoder.TryDecode(scalar.RootElement, AsciiByteOrder.LittleEndian, out text));
+        Assert.AreEqual("\u0001\u0000", text);
     }
 
     [TestMethod]
-    public void PackedAsciiDecoderReadsNumericStringsAndBoundsLargePayloads()
+    public void PackedAsciiDecoderRejectsUnsupportedValuesWithoutTruncating()
     {
-        var values = string.Join(',', Enumerable.Repeat("\"18806\"", 10));
-        var decoded = PackedAsciiDecoder.Decode($"[{values}]", maxWords: 3);
-
-        Assert.AreEqual(3, decoded.WordCount);
-        Assert.AreEqual("IvIvIv", decoded.HighByteFirstText);
-        Assert.IsTrue(decoded.Truncated);
-        StringAssert.Contains(decoded.DisplayText, "Words: 3+");
-        StringAssert.Contains(decoded.DisplayText, "additional values omitted");
-    }
-
-    [TestMethod]
-    public void PackedAsciiDecoderExplainsWhenNoRegisterValuesExist()
-    {
-        var decoded = PackedAsciiDecoder.Decode("{\"value\":70000,\"state\":true}");
-
-        Assert.AreEqual(0, decoded.WordCount);
-        StringAssert.Contains(decoded.DisplayText, "No 16-bit integer values found.");
-        StringAssert.Contains(decoded.DisplayText, "-32768 to 65535");
+        foreach (var input in new[] { "true", "12.5", "65536", "-32769", "1e100", "{\"value\":18806}", "[]", "[18806,\"text\"]" })
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(input);
+            Assert.IsFalse(PackedAsciiDecoder.TryDecode(doc.RootElement, AsciiByteOrder.LittleEndian, out _), input);
+        }
+        using var large = System.Text.Json.JsonDocument.Parse("[" + string.Join(',', Enumerable.Repeat("18806", PackedAsciiDecoder.MaxWords + 1)) + "]");
+        Assert.IsFalse(PackedAsciiDecoder.CanDecode(large.RootElement));
     }
 
     [TestMethod]

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -22,6 +23,7 @@ public sealed class JsonPayloadViewer : RichTextBox
     private static readonly Brush ChartActionBrush = Frozen("#176E63");
     private static readonly Brush SearchMatchBrush = Frozen("#FFE79A");
     private static readonly Brush ActiveSearchMatchBrush = Frozen("#F2B84B");
+    private static readonly Brush AsciiActiveBrush = Frozen("#E3F0ED");
     private readonly List<SearchMatch> _searchMatches = new();
     private readonly Dictionary<int, List<Run>> _searchMatchRuns = new();
     private string _searchQuery = string.Empty;
@@ -30,6 +32,27 @@ public sealed class JsonPayloadViewer : RichTextBox
     private bool _bringActiveSearchMatchIntoView;
     private bool _rendering;
     private double _naturalWidth;
+    private readonly Dictionary<string, AsciiByteOrder> _asciiFields = new(StringComparer.Ordinal);
+    private IReadOnlyList<JsonDisplayLine>? _displayLines;
+    private string? _preparedText;
+    private int _asciiVersion;
+    private int _preparedVersion = -1;
+    private bool _preparedInteractive;
+
+    private static readonly DependencyPropertyKey DisplayTextPropertyKey = DependencyProperty.RegisterReadOnly(
+        nameof(DisplayText), typeof(string), typeof(JsonPayloadViewer), new PropertyMetadata(string.Empty));
+    public static readonly DependencyProperty DisplayTextProperty = DisplayTextPropertyKey.DependencyProperty;
+    public string DisplayText => (string)GetValue(DisplayTextProperty);
+
+    public static readonly DependencyProperty InspectionScopeProperty = DependencyProperty.Register(
+        nameof(InspectionScope), typeof(object), typeof(JsonPayloadViewer),
+        new PropertyMetadata(null, (d, _) => ((JsonPayloadViewer)d).ClearAsciiFields()));
+
+    public object? InspectionScope
+    {
+        get => GetValue(InspectionScopeProperty);
+        set => SetValue(InspectionScopeProperty, value);
+    }
 
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
         nameof(Text),
@@ -112,6 +135,49 @@ public sealed class JsonPayloadViewer : RichTextBox
     public event EventHandler<JsonChartRequestedEventArgs>? ChartRequested;
 
     public event EventHandler? SearchStateChanged;
+
+    public void SetFieldAscii(string pointer, AsciiByteOrder? order)
+    {
+        PrepareDisplay(Text);
+        if (order is { } byteOrder)
+        {
+            if (_displayLines?.Any(line => line.AsciiTarget?.Pointer == pointer) != true) return;
+            _asciiFields[pointer] = byteOrder;
+        }
+        else
+        {
+            _asciiFields.Remove(pointer);
+        }
+
+        _asciiVersion++;
+        RefreshSearchMatches(resetActiveMatch: true);
+        Render(Text);
+        RaiseSearchStateChanged();
+    }
+
+    public void ClearAsciiFields()
+    {
+        if (_asciiFields.Count == 0) return;
+        _asciiFields.Clear();
+        _asciiVersion++;
+        RefreshSearchMatches(resetActiveMatch: true);
+        Render(Text);
+        RaiseSearchStateChanged();
+    }
+
+    private void PrepareDisplay(string text)
+    {
+        if (ReferenceEquals(_preparedText, text) && _preparedVersion == _asciiVersion
+            && _preparedInteractive == EnableChartActions) return;
+
+        _preparedText = text;
+        _preparedVersion = _asciiVersion;
+        _preparedInteractive = EnableChartActions;
+        _displayLines = EnableChartActions && text.Length <= InteractiveLimit
+            && JsonDisplayFormatter.TryBuild(text, out var lines, asciiFields: _asciiFields) ? lines : null;
+        SetValue(DisplayTextPropertyKey, _displayLines is null
+            ? text : string.Join(Environment.NewLine, _displayLines.Select(line => line.Text)));
+    }
 
     public void SetSearchQuery(string? query)
     {
@@ -286,12 +352,11 @@ public sealed class JsonPayloadViewer : RichTextBox
 
     private Paragraph CreateParagraph(string text)
     {
-        if (EnableChartActions
-            && text.Length <= InteractiveLimit
-            && JsonDisplayFormatter.TryBuild(text, out var lines))
+        PrepareDisplay(text);
+        if (_displayLines is { } lines)
         {
             _naturalWidth = PayloadDocumentLayout.MeasureWidth(
-                this, string.Join(Environment.NewLine, lines.Select(line => line.Text)), prefixCharacters: 2);
+                this, DisplayText, prefixCharacters: 6);
             return CreateInteractiveParagraph(lines);
         }
 
@@ -348,6 +413,27 @@ public sealed class JsonPayloadViewer : RichTextBox
                 paragraph.Inlines.Add(new Run("  "));
             }
 
+            if (line.AsciiTarget is { } target)
+            {
+                var action = new Hyperlink(new Run(" A "))
+                {
+                    Tag = target,
+                    ToolTip = $"ASCII: {target.DisplayPath}\nOriginal: {PayloadFormatter.BuildPreview(target.OriginalValue, 120)}\n16-bit BE / byte-swapped LE",
+                    Cursor = Cursors.Hand,
+                    Foreground = target.Order is null ? PunctuationBrush : ChartActionBrush,
+                    Background = target.Order is null ? null : AsciiActiveBrush,
+                    FontWeight = FontWeights.SemiBold,
+                    TextDecorations = null
+                };
+                action.Click += AsciiAction_Click;
+                paragraph.Inlines.Add(action);
+                paragraph.Inlines.Add(new Run(" "));
+            }
+            else
+            {
+                paragraph.Inlines.Add(new Run("    "));
+            }
+
             AddJsonRuns(paragraph, line.Text, textOffset);
             if (index < lines.Count - 1)
             {
@@ -369,6 +455,32 @@ public sealed class JsonPayloadViewer : RichTextBox
         {
             ChartRequested?.Invoke(this, new JsonChartRequestedEventArgs(metric));
             e.Handled = true;
+        }
+    }
+
+    private void AsciiAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Hyperlink { Tag: JsonAsciiTarget target } action) return;
+        var position = action.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+        var menu = new ContextMenu
+        {
+            PlacementTarget = this, Placement = PlacementMode.Relative,
+            HorizontalOffset = position.IsEmpty ? 0 : position.Left,
+            VerticalOffset = position.IsEmpty ? 0 : position.Bottom
+        };
+        action.ContextMenu = menu;
+        AddOption("ASCII · LE (byte-swapped)", AsciiByteOrder.LittleEndian);
+        AddOption("ASCII · BE (high byte first)", AsciiByteOrder.BigEndian);
+        menu.Items.Add(new Separator());
+        AddOption("Original value", null);
+        menu.IsOpen = true;
+        e.Handled = true;
+
+        void AddOption(string header, AsciiByteOrder? order)
+        {
+            var item = new MenuItem { Header = header, IsCheckable = true, IsChecked = target.Order == order };
+            item.Click += (_, _) => SetFieldAscii(target.Pointer, order);
+            menu.Items.Add(item);
         }
     }
 
@@ -679,14 +791,8 @@ public sealed class JsonPayloadViewer : RichTextBox
 
     private string BuildSearchableText(string text)
     {
-        if (EnableChartActions
-            && text.Length <= InteractiveLimit
-            && JsonDisplayFormatter.TryBuild(text, out var lines))
-        {
-            return string.Join(Environment.NewLine, lines.Select(line => line.Text));
-        }
-
-        return text;
+        PrepareDisplay(text);
+        return DisplayText;
     }
 
     private void ApplySearchMatchBrush(int matchIndex, Brush brush)

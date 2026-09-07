@@ -5,7 +5,10 @@ namespace MqttPulse.Core;
 
 public sealed record JsonDisplayLine(
     string Text,
-    JsonScalarMetric? Metric);
+    JsonScalarMetric? Metric,
+    JsonAsciiTarget? AsciiTarget = null);
+
+public sealed record JsonAsciiTarget(string Pointer, string DisplayPath, string OriginalValue, AsciiByteOrder? Order);
 
 public static class JsonDisplayFormatter
 {
@@ -19,7 +22,8 @@ public static class JsonDisplayFormatter
     public static bool TryBuild(
         string text,
         out IReadOnlyList<JsonDisplayLine> lines,
-        int maxLines = DefaultMaxLines)
+        int maxLines = DefaultMaxLines,
+        IReadOnlyDictionary<string, AsciiByteOrder>? asciiFields = null)
     {
         if (maxLines <= 0)
         {
@@ -38,7 +42,7 @@ public static class JsonDisplayFormatter
                 depth: 0,
                 prefix: string.Empty,
                 trailingComma: false,
-                maxLines);
+                maxLines, asciiFields);
             lines = complete ? output : Array.Empty<JsonDisplayLine>();
             return complete;
         }
@@ -57,7 +61,8 @@ public static class JsonDisplayFormatter
         int depth,
         string prefix,
         bool trailingComma,
-        int maxLines)
+        int maxLines,
+        IReadOnlyDictionary<string, AsciiByteOrder>? asciiFields)
     {
         if (depth > MaxDepth || lines.Count >= maxLines)
         {
@@ -66,6 +71,20 @@ public static class JsonDisplayFormatter
 
         var indentation = new string(' ', depth * 2);
         var suffix = trailingComma ? "," : string.Empty;
+        JsonAsciiTarget? asciiTarget = null;
+        if (element.ValueKind != JsonValueKind.Object && PackedAsciiDecoder.CanDecode(element))
+        {
+            AsciiByteOrder? order = asciiFields is not null && asciiFields.TryGetValue(pointer, out var found) ? found : null;
+            asciiTarget = new JsonAsciiTarget(pointer, displayPath, element.GetRawText(), order);
+            if (order is { } selectedOrder && PackedAsciiDecoder.TryDecode(element, selectedOrder, out var ascii))
+            {
+                var originalMetric = JsonScalarExtractor.TryGetScalarKind(element, out var scalarKind)
+                    ? new JsonScalarMetric(pointer, displayPath, scalarKind) : null;
+                lines.Add(new JsonDisplayLine(
+                    $"{indentation}{prefix}{JsonSerializer.Serialize(ascii, StringOptions)}{suffix}", originalMetric, asciiTarget));
+                return true;
+            }
+        }
 
         if (element.ValueKind == JsonValueKind.Object)
         {
@@ -83,7 +102,7 @@ public static class JsonDisplayFormatter
                         depth + 1,
                         propertyPrefix,
                         index < properties.Length - 1,
-                        maxLines))
+                        maxLines, asciiFields))
                 {
                     return false;
                 }
@@ -100,7 +119,7 @@ public static class JsonDisplayFormatter
 
         if (element.ValueKind == JsonValueKind.Array)
         {
-            lines.Add(new JsonDisplayLine($"{indentation}{prefix}[", null));
+            lines.Add(new JsonDisplayLine($"{indentation}{prefix}[", null, asciiTarget));
             var items = element.EnumerateArray().ToArray();
             for (var index = 0; index < items.Length; index++)
             {
@@ -112,7 +131,7 @@ public static class JsonDisplayFormatter
                         depth + 1,
                         prefix: string.Empty,
                         trailingComma: index < items.Length - 1,
-                        maxLines))
+                        maxLines, asciiFields))
                 {
                     return false;
                 }
@@ -133,7 +152,7 @@ public static class JsonDisplayFormatter
             : null;
         lines.Add(new JsonDisplayLine(
             $"{indentation}{prefix}{valueText}{suffix}",
-            metric));
+            metric, asciiTarget));
         return lines.Count <= maxLines;
     }
 
