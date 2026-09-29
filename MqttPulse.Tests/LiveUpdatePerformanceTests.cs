@@ -96,6 +96,66 @@ public sealed class LiveUpdatePerformanceTests
         Assert.AreEqual(1, detailNotifications);
     }
 
+    [TestMethod]
+    public void LargeBurstKeepsTheQueueBoundedAndTheSelectedPreviewSmall()
+    {
+        using var viewModel = new MainViewModel();
+        var receive = GetPrivateMethod("OnMessageReceived");
+        var drain = GetPrivateMethod("DrainPendingMessages");
+        var payload = "{\"data\":\"" + new string('x', 400_000) + "\"}";
+        var receivedAt = DateTimeOffset.Parse("2026-09-30T12:00:00+09:00");
+
+        for (var i = 0; i < 100; i++)
+        {
+            receive.Invoke(viewModel, new object[]
+            {
+                new MqttMessageSnapshot("factory/large", payload, receivedAt.AddMilliseconds(i), 0, false)
+            });
+        }
+
+        Assert.IsLessThan(100, viewModel.PendingCount);
+        var stopwatch = Stopwatch.StartNew();
+        drain.Invoke(viewModel, null);
+        stopwatch.Stop();
+        Assert.IsLessThan(TimeSpan.FromMilliseconds(500), stopwatch.Elapsed);
+        var topic = viewModel.FindLeafTopic("factory/large");
+        Assert.IsNotNull(topic);
+
+        stopwatch.Restart();
+        viewModel.SelectedTopic = topic;
+        stopwatch.Stop();
+        Assert.IsLessThan(TimeSpan.FromSeconds(2), stopwatch.Elapsed);
+        Assert.IsLessThan(17_000, viewModel.ValuePayloadText.Length);
+        Assert.HasCount(5, viewModel.SelectedTopicHistory);
+    }
+
+    [TestMethod]
+    public void ClearingPendingMessagesCompletesDuringContinuousReceive()
+    {
+        using var viewModel = new MainViewModel();
+        var receive = GetPrivateMethod("OnMessageReceived");
+        var message = new MqttMessageSnapshot("factory/large", new string('x', 100_000),
+            DateTimeOffset.UtcNow, 0, false);
+        using var cancellation = new CancellationTokenSource();
+        using var started = new ManualResetEventSlim();
+        var producer = Task.Run(() =>
+        {
+            started.Set();
+            while (!cancellation.IsCancellationRequested)
+            {
+                receive.Invoke(viewModel, new object[] { message });
+            }
+        });
+
+        started.Wait();
+        var clear = Task.Run(() => viewModel.ClearTopicsCommand.Execute(null));
+        var finishedWhileReceiving = clear.Wait(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        producer.Wait();
+        clear.Wait();
+        Assert.IsTrue(finishedWhileReceiving, "Clear must stop at the queue size observed when it started.");
+    }
+
     private static MethodInfo GetPrivateMethod(string name)
     {
         return typeof(MainViewModel).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)

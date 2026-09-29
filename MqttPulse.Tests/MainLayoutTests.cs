@@ -19,6 +19,44 @@ namespace MqttPulse.Tests;
 public sealed class MainLayoutTests
 {
     [TestMethod]
+    public void LargeLiveAndSelectedMessagesRemainBoundedButCopyFullPayload()
+    {
+        RunInWindow(window =>
+        {
+            var viewModel = (MainViewModel)window.DataContext;
+            var topic = new TopicViewModel("device", "factory/line/device", historyCapacity: 10);
+            var payload = "{\"data\":\"" + new string('x', 2_000_000) + "\"}";
+            var message = Message(payload, "2026-09-30T12:00:00+09:00");
+            topic.Record(message, isLeaf: true, leafTopicWasNew: true);
+
+            viewModel.SelectedTopic = topic;
+            viewModel.SelectedHistoryItem = viewModel.SelectedTopicHistory.Single();
+
+            foreach (var size in new[]
+                     {
+                         new Size(1920, 1080), new Size(1440, 900),
+                         new Size(1366, 768), new Size(1100, 720)
+                     })
+            {
+                window.Width = size.Width;
+                window.Height = size.Height;
+                window.UpdateLayout();
+                Assert.IsGreaterThan(0, ((JsonPayloadViewer)window.FindName("ValuePayloadViewer")).ActualHeight);
+                Assert.IsGreaterThan(0, ((JsonPayloadViewer)window.FindName("SelectedPayloadViewer")).ActualHeight);
+            }
+
+            Assert.IsLessThan(17_000, viewModel.ValuePayloadText.Length);
+            Assert.IsLessThan(17_000, viewModel.SelectedPayloadText.Length);
+            Assert.IsLessThan(17_000, ((JsonPayloadViewer)window.FindName("ValuePayloadViewer")).DisplayText.Length);
+            var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+            Assert.AreEqual(payload, typeof(MainViewModel).GetMethod("GetValueCopyText", flags)!.Invoke(
+                viewModel, new object[] { ((JsonPayloadViewer)window.FindName("ValuePayloadViewer")).DisplayText }));
+            Assert.AreEqual(payload, typeof(MainViewModel).GetMethod("GetSelectedCopyText", flags)!.Invoke(
+                viewModel, new object[] { ((JsonPayloadViewer)window.FindName("SelectedPayloadViewer")).DisplayText }));
+        });
+    }
+
+    [TestMethod]
     public void PayloadActionsDoNotIndentJsonOrWrapAnOtherwiseFittingString()
     {
         RunInWindow(window =>

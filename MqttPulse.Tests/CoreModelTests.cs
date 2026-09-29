@@ -97,6 +97,19 @@ public sealed class CoreModelTests
     }
 
     [TestMethod]
+    public void OversizedPayloadIsBoundedBeforeJsonFormatting()
+    {
+        var payload = "{\"data\":\"" + new string('x', 2_000_000) + "\"}";
+
+        var result = PayloadFormatter.Format(payload, displayLimit: 16_000);
+
+        Assert.IsTrue(result.IsTruncated);
+        Assert.IsLessThan(17_000, result.DisplayText.Length);
+        StringAssert.Contains(result.DisplayText, "Copy copies the full payload");
+        Assert.AreEqual(payload[..16_000], result.DisplayText[..16_000]);
+    }
+
+    [TestMethod]
     public void PackedAsciiDecoderReadsBothByteOrdersOfOneValue()
     {
         using var doc = System.Text.Json.JsonDocument.Parse("18806");

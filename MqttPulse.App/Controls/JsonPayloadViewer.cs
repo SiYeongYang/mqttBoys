@@ -11,8 +11,8 @@ namespace MqttPulse.App.Controls;
 
 public sealed class JsonPayloadViewer : RichTextBox
 {
-    private const int HighlightLimit = 64_000;
-    private const int InteractiveLimit = 256_000;
+    private const int HighlightLimit = 8_000;
+    private const int InteractiveLimit = 8_000;
     private const int SearchMatchLimit = 10_000;
     private static readonly Brush TextBrush = Frozen("#17211F");
     private static readonly Brush KeyBrush = Frozen("#0A5C9C");
@@ -174,7 +174,7 @@ public sealed class JsonPayloadViewer : RichTextBox
         _preparedVersion = _asciiVersion;
         _preparedInteractive = EnableChartActions;
         _displayLines = EnableChartActions && text.Length <= InteractiveLimit
-            && JsonDisplayFormatter.TryBuild(text, out var lines, asciiFields: _asciiFields) ? lines : null;
+            && JsonDisplayFormatter.TryBuild(text, out var lines, maxLines: 300, asciiFields: _asciiFields) ? lines : null;
         SetValue(DisplayTextPropertyKey, _displayLines is null
             ? text : string.Join(Environment.NewLine, _displayLines.Select(line => line.Text)));
     }

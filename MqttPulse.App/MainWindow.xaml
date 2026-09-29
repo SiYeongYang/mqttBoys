@@ -860,7 +860,7 @@
                                         <Button x:Name="ValueCopyButton" Content="&#xE8C8;"
                                                  Command="{Binding CopyValueCommand}"
                                                  CommandParameter="{Binding DisplayText, ElementName=ValuePayloadViewer}"
-                                                 ToolTip="Copy Value"
+                                                 ToolTip="Copy Value (full payload when preview is truncated)"
                                                  Style="{StaticResource IconButtonStyle}" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal">
@@ -943,7 +943,7 @@
                                         <Button x:Name="SelectedCopyButton" Content="&#xE8C8;"
                                                 Command="{Binding CopySelectedCommand}"
                                                 CommandParameter="{Binding DisplayText, ElementName=SelectedPayloadViewer}"
-                                                ToolTip="Copy Selected"
+                                                ToolTip="Copy Selected (full payload when preview is truncated)"
                                                 Style="{StaticResource IconButtonStyle}" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal">

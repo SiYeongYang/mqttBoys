@@ -22,12 +22,13 @@
 - 10초, 30초, 1분 및 직접 입력을 지원하는 정밀 주기 측정과 중단 결과 기록
 - JSON 자동 정리, 접을 수 있는 구조 트리, 구문 강조, 복사 및 Publish
 - 연결 끊김 감지와 자동 재연결
+- 큰 payload의 제한된 화면 미리보기와 전체 원본 복사, 연속 수신 중 UI 응답 유지
 
 ## 다운로드
 
 [Releases](../../releases)에서 최신 `mqttBoys.exe`를 내려받아 실행합니다. 별도 설치나 추가 런타임은 필요하지 않습니다.
 
-현재 버전: **0.0.17**
+현재 버전: **0.0.18**
 
 ## 지원 환경
 
@@ -50,6 +51,6 @@ dotnet publish .\MqttPulse.App\MqttPulse.App.csproj -c Release -r win-x64 --self
 `v*` 형식의 태그를 푸시하면 GitHub Actions가 테스트 후 Windows x64 단일 실행 파일을 빌드하여 Release에 첨부합니다. 릴리스 설명은 `CHANGELOG.md`의 같은 버전 항목을 사용하며, 해당 항목이 없으면 배포가 실패합니다.
 
 ```powershell
-git tag v0.0.17
-git push origin v0.0.17
+git tag v0.0.18
+git push origin v0.0.18
 ```

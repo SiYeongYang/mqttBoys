@@ -26,6 +26,15 @@ public static class PayloadFormatter
         }
 
         var preview = BuildPreview(payload, previewLimit);
+        if (payload.Length > displayLimit)
+        {
+            return new PayloadFormatResult(
+                preview,
+                payload[..displayLimit] + Environment.NewLine + "... preview truncated (Copy copies the full payload)",
+                false,
+                true);
+        }
+
         var isJson = TryFormatJson(payload, out var jsonText);
         var display = isJson ? jsonText! : payload;
 

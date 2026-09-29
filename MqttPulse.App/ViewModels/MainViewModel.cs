@@ -17,8 +17,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private const int MaxPendingMessages = 10_000;
     private const long MaxPendingPayloadCharacters = 16_000_000;
     private const int HistoryDisplayLimit = 100;
+    private const int DetailDisplayLimit = 16_000;
     private static readonly long UiDrainBudgetTicks = Stopwatch.Frequency / 100;
     private static readonly long ValueRefreshMinTicks = Stopwatch.Frequency / 10;
+    private static readonly long LargeValueRefreshMinTicks = Stopwatch.Frequency / 4;
     private static readonly long HistoryRefreshMinTicks = Stopwatch.Frequency / 2;
     private static readonly long TopicVisualRefreshMinTicks = Stopwatch.Frequency / 2;
     private const int SearchResultLimit = 500;
@@ -89,6 +91,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private long _lastTopicVisualRefreshTimestamp;
     private ValueFormatRequest? _pendingValueFormatRequest;
     private MqttMessageSnapshot? _displayedSelectedMessage;
+    private MqttMessageSnapshot? _displayedValueMessage;
     private bool _valueDirty;
     private bool _historyDirty;
     private int _detailGeneration;
@@ -1098,7 +1101,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void CopyValueToClipboard(string? displayedText)
     {
-        var text = IsValueDiffMode ? ValuePayloadText : displayedText ?? ValuePayloadText;
+        var text = GetValueCopyText(displayedText);
         if (string.IsNullOrEmpty(text))
         {
             return;
@@ -1110,7 +1113,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void CopySelectedToClipboard(string? displayedText)
     {
-        var text = displayedText ?? SelectedPayloadText;
+        var text = GetSelectedCopyText(displayedText);
         if (string.IsNullOrEmpty(text))
         {
             return;
@@ -1119,6 +1122,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Clipboard.SetText(text);
         StatusMessage = "Selected copied";
     }
+
+    private string GetValueCopyText(string? displayedText) =>
+        _displayedValueMessage?.PayloadLength > DetailDisplayLimit
+            ? _displayedValueMessage.PayloadText
+            : IsValueDiffMode ? ValuePayloadText : displayedText ?? ValuePayloadText;
+
+    private string GetSelectedCopyText(string? displayedText) =>
+        _displayedSelectedMessage?.PayloadLength > DetailDisplayLimit
+            ? _displayedSelectedMessage.PayloadText
+            : displayedText ?? SelectedPayloadText;
 
     private void ToggleHistoryPause()
     {
@@ -1791,6 +1804,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PreviousValuePayloadText = string.Empty;
         SelectedPayloadText = string.Empty;
         _displayedSelectedMessage = null;
+        _displayedValueMessage = null;
         SelectedTopicAveragePeriodText = "Avg -";
         ReceivedMessages = 0;
         PendingCount = 0;
@@ -1929,7 +1943,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool ShouldRefreshValue()
     {
         var now = Stopwatch.GetTimestamp();
-        if (now - _lastValueRefreshTimestamp < ValueRefreshMinTicks)
+        var interval = SelectedTopic?.LastMessage?.PayloadLength > DetailDisplayLimit
+            ? LargeValueRefreshMinTicks
+            : ValueRefreshMinTicks;
+        if (now - _lastValueRefreshTimestamp < interval)
         {
             return false;
         }
@@ -2210,6 +2227,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         MqttMessageSnapshot? previousMessage)
     {
         _lastAppliedValueVersion = ++_valueFormatVersion;
+        _displayedValueMessage = message;
         ValuePayloadText = FormatPayloadForDetail(message);
 
         PreviousValuePayloadText = IsValueDiffMode && previousMessage is not null
@@ -2284,6 +2302,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                         && ReferenceEquals(SelectedTopic, request.Topic))
                     {
                         _lastAppliedValueVersion = request.Version;
+                        _displayedValueMessage = request.Message;
                         ValuePayloadText = formatted;
                         PreviousValuePayloadText = IsValueDiffMode
                             ? previousFormatted
@@ -2312,6 +2331,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void ClearValueDisplay()
     {
+        _displayedValueMessage = null;
         ValuePayloadText = string.Empty;
         PreviousValuePayloadText = string.Empty;
     }
@@ -2351,17 +2371,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void ClearPendingMessages()
     {
         var removed = 0;
-        long removedPayloadCharacters = 0;
-        while (_pendingMessages.TryDequeue(out var message))
+        var limit = Math.Max(0, Volatile.Read(ref _pendingQueueCount));
+        while (removed < limit && _pendingMessages.TryDequeue(out var message))
         {
             removed++;
-            removedPayloadCharacters += message.PayloadLength;
-        }
-
-        if (removed > 0)
-        {
-            Interlocked.Add(ref _pendingQueueCount, -removed);
-            Interlocked.Add(ref _pendingPayloadCharacters, -removedPayloadCharacters);
+            Interlocked.Decrement(ref _pendingQueueCount);
+            Interlocked.Add(ref _pendingPayloadCharacters, -message.PayloadLength);
         }
 
         PendingCount = Math.Max(0, Volatile.Read(ref _pendingQueueCount));
@@ -2369,8 +2384,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void TrimPendingMessages()
     {
-        while (Volatile.Read(ref _pendingQueueCount) > MaxPendingMessages
-               || Volatile.Read(ref _pendingPayloadCharacters) > MaxPendingPayloadCharacters)
+        var limit = Math.Max(0, Volatile.Read(ref _pendingQueueCount));
+        for (var removed = 0;
+             removed < limit && (Volatile.Read(ref _pendingQueueCount) > MaxPendingMessages
+                                 || Volatile.Read(ref _pendingPayloadCharacters) > MaxPendingPayloadCharacters);
+             removed++)
         {
             if (!_pendingMessages.TryDequeue(out var dropped))
             {
@@ -2398,7 +2416,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     private static string FormatPayloadForDetail(MqttMessageSnapshot message) =>
-        PayloadFormatter.Format(message.PayloadText, previewLimit: 200).DisplayText;
+        PayloadFormatter.Format(message.PayloadText, previewLimit: 200, displayLimit: DetailDisplayLimit).DisplayText;
 
     private static string FormatAveragePeriod(IReadOnlyList<MqttMessageSnapshot> history)
     {
