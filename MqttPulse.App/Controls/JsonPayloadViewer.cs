@@ -77,7 +77,9 @@ public sealed class JsonPayloadViewer : RichTextBox
             var viewer = (JsonPayloadViewer)d;
             if (viewer.IsActive)
             {
+                viewer.RefreshSearchMatches(resetActiveMatch: true);
                 viewer.Render(viewer.Text);
+                viewer.RaiseSearchStateChanged();
             }
         }));
 
@@ -188,6 +190,7 @@ public sealed class JsonPayloadViewer : RichTextBox
         }
 
         _searchQuery = normalized;
+        if (!IsActive) return;
         RefreshSearchMatches(resetActiveMatch: true);
         _bringActiveSearchMatchIntoView = SearchMatchCount > 0;
         Render(Text);
@@ -270,6 +273,7 @@ public sealed class JsonPayloadViewer : RichTextBox
     {
         if (d is JsonPayloadViewer viewer)
         {
+            if (!viewer.IsActive) return;
             viewer.RefreshSearchMatches(resetActiveMatch: true);
             viewer._bringActiveSearchMatchIntoView = viewer.SearchMatchCount > 0;
             viewer.Render((string?)e.NewValue ?? string.Empty);
@@ -294,7 +298,7 @@ public sealed class JsonPayloadViewer : RichTextBox
 
     private void Render(string text)
     {
-        if (_rendering || !IsActive)
+        if (_rendering || !IsActive || text.Length > 32_000)
         {
             return;
         }

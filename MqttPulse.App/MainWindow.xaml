@@ -859,9 +859,18 @@
                                                 Margin="0,0,2,0" />
                                         <Button x:Name="ValueCopyButton" Content="&#xE8C8;"
                                                  Command="{Binding CopyValueCommand}"
-                                                 CommandParameter="{Binding DisplayText, ElementName=ValuePayloadViewer}"
-                                                 ToolTip="Copy Value (full payload when preview is truncated)"
-                                                 Style="{StaticResource IconButtonStyle}" />
+                                                 ToolTip="Copy Value">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+                                                    <Setter Property="CommandParameter" Value="{Binding DisplayText, ElementName=ValuePayloadViewer}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsValueVirtualMode}" Value="True">
+                                                            <Setter Property="CommandParameter" Value="{Binding DisplayText, ElementName=ValueVirtualPayloadViewer}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="Value"
@@ -888,12 +897,12 @@
                                 <Grid Grid.Row="1">
                                     <controls:JsonPayloadViewer x:Name="ValuePayloadViewer"
                                                                 WordWrap="{Binding IsChecked, ElementName=ValueWrapButton}"
-                                                                IsActive="{Binding IsValueTextMode}"
+                                                                IsActive="{Binding IsValueRichTextMode}"
                                                                 Text="{Binding ValuePayloadText, Mode=OneWay}"
                                                                 InspectionScope="{Binding SelectedTopic}"
                                                                 EnableChartActions="{Binding IsValueRawMode, Mode=OneWay}"
                                                                 ChartRequested="PayloadViewer_ChartRequested"
-                                                                Visibility="{Binding IsValueTextMode, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                Visibility="{Binding IsValueRichTextMode, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                                 FontFamily="Consolas"
                                                                 FontSize="12"
                                                                 VerticalScrollBarVisibility="Auto"
@@ -905,8 +914,8 @@
                                                              WordWrap="{Binding IsChecked, ElementName=ValueWrapButton}"
                                                              BaselineText="{Binding PreviousValuePayloadText, Mode=OneWay}"
                                                              CurrentText="{Binding ValuePayloadText, Mode=OneWay}"
-                                                             IsActive="{Binding IsValueDiffMode, Mode=OneWay}"
-                                                             Visibility="{Binding IsValueDiffMode, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                             IsActive="{Binding IsValueRichDiffMode, Mode=OneWay}"
+                                                             Visibility="{Binding IsValueRichDiffMode, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                              FontFamily="Consolas"
                                                              FontSize="12"
                                                              VerticalScrollBarVisibility="Auto"
@@ -914,6 +923,17 @@
                                                              BorderBrush="{StaticResource BorderBrushSoft}"
                                                              Background="{StaticResource CodeBackgroundBrush}"
                                                              ToolTip="Shift + 마우스 휠로 좌우 이동" />
+                                    <controls:VirtualPayloadViewer x:Name="ValueVirtualPayloadViewer"
+                                                                  PayloadText="{Binding ValuePayloadText}"
+                                                                  BaselineText="{Binding PreviousValuePayloadText}"
+                                                                  UseDiff="{Binding IsValueDiffMode}"
+                                                                  InspectionScope="{Binding SelectedTopic}"
+                                                                  IsActive="{Binding IsValueVirtualMode}"
+                                                                  Visibility="{Binding IsValueVirtualMode, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                  WordWrap="{Binding IsChecked, ElementName=ValueWrapButton}"
+                                                                  FontFamily="Consolas" FontSize="12" Padding="5,0"
+                                                                  BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1"
+                                                                  Background="{StaticResource CodeBackgroundBrush}" />
                                 </Grid>
                             </Grid>
 
@@ -942,9 +962,18 @@
                                                 AutomationProperties.Name="Find in Selected" />
                                         <Button x:Name="SelectedCopyButton" Content="&#xE8C8;"
                                                 Command="{Binding CopySelectedCommand}"
-                                                CommandParameter="{Binding DisplayText, ElementName=SelectedPayloadViewer}"
-                                                ToolTip="Copy Selected (full payload when preview is truncated)"
-                                                Style="{StaticResource IconButtonStyle}" />
+                                                ToolTip="Copy Selected">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+                                                    <Setter Property="CommandParameter" Value="{Binding DisplayText, ElementName=SelectedPayloadViewer}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSelectedVirtualMode}" Value="True">
+                                                            <Setter Property="CommandParameter" Value="{Binding DisplayText, ElementName=SelectedVirtualPayloadViewer}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="Selected"
@@ -961,6 +990,8 @@
                                     </Grid.RowDefinitions>
                                     <controls:JsonPayloadViewer x:Name="SelectedPayloadViewer"
                                                                 Grid.Row="1"
+                                                                IsActive="{Binding IsSelectedRichTextMode}"
+                                                                Visibility="{Binding IsSelectedRichTextMode, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                                 WordWrap="{Binding IsChecked, ElementName=SelectedWrapButton}"
                                                                 Text="{Binding SelectedPayloadText, Mode=OneWay}"
                                                                 InspectionScope="{Binding SelectedTopic}"
@@ -974,6 +1005,16 @@
                                                                 BorderBrush="{StaticResource BorderBrushSoft}"
                                                                 Background="{StaticResource CodeBackgroundBrush}"
                                                                 ToolTip="Shift + 마우스 휠로 좌우 이동" />
+                                    <controls:VirtualPayloadViewer x:Name="SelectedVirtualPayloadViewer" Grid.Row="1"
+                                                                  PayloadText="{Binding SelectedPayloadText}"
+                                                                  InspectionScope="{Binding SelectedTopic}"
+                                                                  IsActive="{Binding IsSelectedVirtualMode}"
+                                                                  Visibility="{Binding IsSelectedVirtualMode, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                  WordWrap="{Binding IsChecked, ElementName=SelectedWrapButton}"
+                                                                  SearchStateChanged="SelectedPayloadViewer_SearchStateChanged"
+                                                                  FontFamily="Consolas" FontSize="12" Padding="5,0"
+                                                                  BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1"
+                                                                  Background="{StaticResource CodeBackgroundBrush}" />
 
                                     <Border x:Name="SelectedSearchPanel"
                                             Height="36"

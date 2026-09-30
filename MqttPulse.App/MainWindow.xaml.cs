@@ -32,6 +32,7 @@ public partial class MainWindow : Window
         _viewModel = viewModel;
         DataContext = _viewModel;
         _selectedSearchDebounceTimer.Tick += SelectedSearchDebounceTimer_Tick;
+        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         Closed += MainWindow_Closed;
     }
 
@@ -104,9 +105,15 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
+        _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
         _selectedSearchDebounceTimer.Stop();
         _chartWindow?.Close();
         _viewModel.Dispose();
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.IsSelectedVirtualMode)) FlushSelectedSearchQuery();
     }
 
     private void FindInSelected_CanExecute(object sender, CanExecuteRoutedEventArgs e)
@@ -166,6 +173,7 @@ public partial class MainWindow : Window
     {
         _selectedSearchDebounceTimer.Stop();
         SelectedPayloadViewer.SetSearchQuery(SelectedSearchInput.Text);
+        SelectedVirtualPayloadViewer.SetSearchQuery(SelectedSearchInput.Text);
         UpdateSelectedSearchState();
     }
 
@@ -184,21 +192,26 @@ public partial class MainWindow : Window
         }
 
         FlushSelectedSearchQuery();
-        SelectedPayloadViewer.MoveSearchMatch(
-            (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift ? -1 : 1);
+        MoveSelectedSearchMatch((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift ? -1 : 1);
         e.Handled = true;
     }
 
     private void SelectedSearchPreviousButton_Click(object sender, RoutedEventArgs e)
     {
         FlushSelectedSearchQuery();
-        SelectedPayloadViewer.MoveSearchMatch(-1);
+        MoveSelectedSearchMatch(-1);
     }
 
     private void SelectedSearchNextButton_Click(object sender, RoutedEventArgs e)
     {
         FlushSelectedSearchQuery();
-        SelectedPayloadViewer.MoveSearchMatch(1);
+        MoveSelectedSearchMatch(1);
+    }
+
+    private void MoveSelectedSearchMatch(int offset)
+    {
+        if (_viewModel.IsSelectedVirtualMode) SelectedVirtualPayloadViewer.MoveSearchMatch(offset);
+        else SelectedPayloadViewer.MoveSearchMatch(offset);
     }
 
     private void SelectedSearchCloseButton_Click(object sender, RoutedEventArgs e)
@@ -220,14 +233,16 @@ public partial class MainWindow : Window
         }
 
         SelectedPayloadViewer.ClearSearch();
+        SelectedVirtualPayloadViewer.ClearSearch();
         SelectedSearchPanel.Visibility = Visibility.Collapsed;
-        SelectedPayloadViewer.Focus();
+        if (_viewModel.IsSelectedVirtualMode) SelectedVirtualPayloadViewer.Focus();
+        else SelectedPayloadViewer.Focus();
         UpdateSelectedSearchState();
     }
 
     private void SelectedPayloadViewer_SearchStateChanged(object? sender, EventArgs e)
     {
-        if (SelectedSearchResultText is null)
+        if (SelectedSearchResultText is null || _viewModel is null)
         {
             return;
         }
@@ -237,8 +252,10 @@ public partial class MainWindow : Window
 
     private void UpdateSelectedSearchState()
     {
-        var hasMatches = SelectedPayloadViewer.SearchMatchCount > 0;
-        SelectedSearchResultText.Text = SelectedPayloadViewer.SearchResultText;
+        var hasMatches = _viewModel.IsSelectedVirtualMode
+            ? SelectedVirtualPayloadViewer.SearchMatchCount > 0 : SelectedPayloadViewer.SearchMatchCount > 0;
+        SelectedSearchResultText.Text = _viewModel.IsSelectedVirtualMode
+            ? SelectedVirtualPayloadViewer.SearchResultText : SelectedPayloadViewer.SearchResultText;
         SelectedSearchPreviousButton.IsEnabled = hasMatches;
         SelectedSearchNextButton.IsEnabled = hasMatches;
     }

@@ -97,16 +97,26 @@ public sealed class CoreModelTests
     }
 
     [TestMethod]
-    public void OversizedPayloadIsBoundedBeforeJsonFormatting()
+    public void NonJsonLargePayloadIsPreservedWithoutTruncation()
     {
-        var payload = "{\"data\":\"" + new string('x', 2_000_000) + "\"}";
+        var payload = new string('x', 2_000_000) + "LAST_NON_JSON_FIELD";
 
-        var result = PayloadFormatter.Format(payload, displayLimit: 16_000);
+        var result = PayloadFormatter.Format(payload);
 
-        Assert.IsTrue(result.IsTruncated);
-        Assert.IsLessThan(17_000, result.DisplayText.Length);
-        StringAssert.Contains(result.DisplayText, "Copy copies the full payload");
-        Assert.AreEqual(payload[..16_000], result.DisplayText[..16_000]);
+        Assert.IsFalse(result.IsTruncated);
+        Assert.AreSame(payload, result.DisplayText);
+    }
+
+    [TestMethod]
+    public void FullPayloadFormattingKeepsTheFinalFieldBeyondTwoMillionCharacters()
+    {
+        var payload = "{\"data\":\"" + new string('x', 2_000_000) + "\",\"tail\":\"FINAL_FIELD\"}";
+        var result = PayloadFormatter.Format(payload);
+        Assert.IsFalse(result.IsTruncated);
+        Assert.IsTrue(result.IsJson);
+        using var document = System.Text.Json.JsonDocument.Parse(result.DisplayText);
+        Assert.AreEqual("FINAL_FIELD", document.RootElement.GetProperty("tail").GetString());
+        Assert.AreEqual(2_000_000, document.RootElement.GetProperty("data").GetString()!.Length);
     }
 
     [TestMethod]

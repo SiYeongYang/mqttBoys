@@ -17,7 +17,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private const int MaxPendingMessages = 10_000;
     private const long MaxPendingPayloadCharacters = 16_000_000;
     private const int HistoryDisplayLimit = 100;
-    private const int DetailDisplayLimit = 16_000;
+    private const int VirtualDisplayThreshold = 32_000;
     private static readonly long UiDrainBudgetTicks = Stopwatch.Frequency / 100;
     private static readonly long ValueRefreshMinTicks = Stopwatch.Frequency / 10;
     private static readonly long LargeValueRefreshMinTicks = Stopwatch.Frequency / 4;
@@ -39,6 +39,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly MqttClientService _mqttClient = new();
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _flushTimer;
+    private readonly CancellationTokenSource _formatLifetime = new();
     private CancellationTokenSource? _periodCheckCancellation;
     private ProfileTreeNodeViewModel? _selectedProfileNode;
     private TopicViewModel? _brokerTopicRoot;
@@ -91,7 +92,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private long _lastTopicVisualRefreshTimestamp;
     private ValueFormatRequest? _pendingValueFormatRequest;
     private MqttMessageSnapshot? _displayedSelectedMessage;
-    private MqttMessageSnapshot? _displayedValueMessage;
     private bool _valueDirty;
     private bool _historyDirty;
     private int _detailGeneration;
@@ -99,6 +99,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private long _lastAppliedValueVersion;
     private int _valueFormatWorkerRunning;
     private volatile bool _isDisposed;
+    private MqttMessageSnapshot? _pendingSelectedFormat;
+    private int _selectedFormatWorkerRunning;
 
     public MainViewModel(
         ProfileStore? profileStore = null,
@@ -365,7 +367,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (value is not null && !ReferenceEquals(_displayedSelectedMessage, value.Message))
             {
                 _displayedSelectedMessage = value.Message;
-                SelectedPayloadText = FormatPayloadForDetail(value.Message);
+                if (value.Message.PayloadLength <= VirtualDisplayThreshold)
+                {
+                    SelectedPayloadText = FormatPayloadForDetail(value.Message);
+                }
+                else
+                {
+                    SelectedPayloadText = value.Message.PayloadText;
+                    Interlocked.Exchange(ref _pendingSelectedFormat, value.Message);
+                    StartSelectedFormatWorker();
+                }
             }
         }
     }
@@ -547,6 +558,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _valuePayloadText, value))
             {
+                OnPropertyChanged(nameof(IsValueVirtualMode));
+                OnPropertyChanged(nameof(IsValueRichTextMode));
+                OnPropertyChanged(nameof(IsValueRichDiffMode));
                 CopyValueCommand.RaiseCanExecuteChanged();
             }
         }
@@ -558,10 +572,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool IsValueTextMode => !IsValueDiffMode;
 
+    public bool IsValueVirtualMode => ValuePayloadText.Length > VirtualDisplayThreshold
+        || (IsValueDiffMode && PreviousValuePayloadText.Length > VirtualDisplayThreshold);
+
+    public bool IsValueRichTextMode => IsValueTextMode && !IsValueVirtualMode;
+
+    public bool IsValueRichDiffMode => IsValueDiffMode && !IsValueVirtualMode;
+
     public string PreviousValuePayloadText
     {
         get => _previousValuePayloadText;
-        private set => SetProperty(ref _previousValuePayloadText, value);
+        private set
+        {
+            if (SetProperty(ref _previousValuePayloadText, value))
+            {
+                OnPropertyChanged(nameof(IsValueVirtualMode));
+                OnPropertyChanged(nameof(IsValueRichTextMode));
+                OnPropertyChanged(nameof(IsValueRichDiffMode));
+            }
+        }
     }
 
     public string SelectedPayloadText
@@ -571,10 +600,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedPayloadText, value))
             {
+                OnPropertyChanged(nameof(IsSelectedVirtualMode));
+                OnPropertyChanged(nameof(IsSelectedRichTextMode));
                 CopySelectedCommand.RaiseCanExecuteChanged();
             }
         }
     }
+
+    public bool IsSelectedVirtualMode => SelectedPayloadText.Length > VirtualDisplayThreshold;
+
+    public bool IsSelectedRichTextMode => !IsSelectedVirtualMode;
 
     public string SelectedTopicAveragePeriodText
     {
@@ -836,7 +871,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _isDisposed = true;
+        _formatLifetime.Cancel();
         Interlocked.Exchange(ref _pendingValueFormatRequest, null);
+        Interlocked.Exchange(ref _pendingSelectedFormat, null);
         _periodCheckCancellation?.Cancel();
         _flushTimer.Stop();
         _mqttClient.Dispose();
@@ -1124,14 +1161,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     private string GetValueCopyText(string? displayedText) =>
-        _displayedValueMessage?.PayloadLength > DetailDisplayLimit
-            ? _displayedValueMessage.PayloadText
-            : IsValueDiffMode ? ValuePayloadText : displayedText ?? ValuePayloadText;
+        IsValueDiffMode || string.IsNullOrEmpty(displayedText) ? ValuePayloadText : displayedText;
 
     private string GetSelectedCopyText(string? displayedText) =>
-        _displayedSelectedMessage?.PayloadLength > DetailDisplayLimit
-            ? _displayedSelectedMessage.PayloadText
-            : displayedText ?? SelectedPayloadText;
+        string.IsNullOrEmpty(displayedText) ? SelectedPayloadText : displayedText;
 
     private void ToggleHistoryPause()
     {
@@ -1804,7 +1837,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PreviousValuePayloadText = string.Empty;
         SelectedPayloadText = string.Empty;
         _displayedSelectedMessage = null;
-        _displayedValueMessage = null;
         SelectedTopicAveragePeriodText = "Avg -";
         ReceivedMessages = 0;
         PendingCount = 0;
@@ -1943,7 +1975,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool ShouldRefreshValue()
     {
         var now = Stopwatch.GetTimestamp();
-        var interval = SelectedTopic?.LastMessage?.PayloadLength > DetailDisplayLimit
+        var interval = SelectedTopic?.LastMessage?.PayloadLength > VirtualDisplayThreshold
             ? LargeValueRefreshMinTicks
             : ValueRefreshMinTicks;
         if (now - _lastValueRefreshTimestamp < interval)
@@ -2227,7 +2259,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         MqttMessageSnapshot? previousMessage)
     {
         _lastAppliedValueVersion = ++_valueFormatVersion;
-        _displayedValueMessage = message;
         ValuePayloadText = FormatPayloadForDetail(message);
 
         PreviousValuePayloadText = IsValueDiffMode && previousMessage is not null
@@ -2239,6 +2270,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedTopic?.LastMessage is { } message)
         {
+            if (message.PayloadLength > VirtualDisplayThreshold)
+            {
+                ValuePayloadText = message.PayloadText;
+                PreviousValuePayloadText = string.Empty;
+                QueueSelectedTopicValueRefresh();
+                return;
+            }
             ShowValuePayloads(message, SelectedTopic.PreviousMessage);
             return;
         }
@@ -2275,6 +2313,34 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _ = Task.Run(ProcessPendingValueFormatsAsync);
     }
 
+    private void StartSelectedFormatWorker()
+    {
+        if (_isDisposed || Interlocked.CompareExchange(ref _selectedFormatWorkerRunning, 1, 0) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (!_isDisposed && Interlocked.Exchange(ref _pendingSelectedFormat, null) is { } message)
+                {
+                    var formatted = FormatPayloadForDetail(message);
+                    if (_isDisposed) return;
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        if (!_isDisposed && ReferenceEquals(_displayedSelectedMessage, message))
+                            SelectedPayloadText = formatted;
+                    }, DispatcherPriority.Background, _formatLifetime.Token);
+                }
+            }
+            catch (OperationCanceledException) when (_isDisposed || _dispatcher.HasShutdownStarted) { }
+            catch (InvalidOperationException) when (_isDisposed || _dispatcher.HasShutdownStarted) { }
+            finally
+            {
+                Interlocked.Exchange(ref _selectedFormatWorkerRunning, 0);
+                if (!_isDisposed && Volatile.Read(ref _pendingSelectedFormat) is not null) StartSelectedFormatWorker();
+            }
+        });
+    }
+
     private async Task ProcessPendingValueFormatsAsync()
     {
         try
@@ -2302,16 +2368,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                         && ReferenceEquals(SelectedTopic, request.Topic))
                     {
                         _lastAppliedValueVersion = request.Version;
-                        _displayedValueMessage = request.Message;
                         ValuePayloadText = formatted;
                         PreviousValuePayloadText = IsValueDiffMode
                             ? previousFormatted
                             : string.Empty;
                     }
-                }, DispatcherPriority.DataBind);
+                }, DispatcherPriority.Background, _formatLifetime.Token);
             }
         }
-        catch (TaskCanceledException) when (_isDisposed || _dispatcher.HasShutdownStarted)
+        catch (OperationCanceledException) when (_isDisposed || _dispatcher.HasShutdownStarted)
         {
             // Normal shutdown while a formatted Value is waiting for the UI thread.
         }
@@ -2331,7 +2396,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void ClearValueDisplay()
     {
-        _displayedValueMessage = null;
         ValuePayloadText = string.Empty;
         PreviousValuePayloadText = string.Empty;
     }
@@ -2354,6 +2418,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsValueRawMode));
         OnPropertyChanged(nameof(IsValueDiffMode));
         OnPropertyChanged(nameof(IsValueTextMode));
+        OnPropertyChanged(nameof(IsValueVirtualMode));
+        OnPropertyChanged(nameof(IsValueRichTextMode));
+        OnPropertyChanged(nameof(IsValueRichDiffMode));
         CopyValueCommand.RaiseCanExecuteChanged();
     }
 
@@ -2416,7 +2483,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     private static string FormatPayloadForDetail(MqttMessageSnapshot message) =>
-        PayloadFormatter.Format(message.PayloadText, previewLimit: 200, displayLimit: DetailDisplayLimit).DisplayText;
+        PayloadFormatter.Format(message.PayloadText, previewLimit: 200).DisplayText;
 
     private static string FormatAveragePeriod(IReadOnlyList<MqttMessageSnapshot> history)
     {

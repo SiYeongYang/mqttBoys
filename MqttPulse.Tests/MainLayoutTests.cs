@@ -19,40 +19,120 @@ namespace MqttPulse.Tests;
 public sealed class MainLayoutTests
 {
     [TestMethod]
-    public void LargeLiveAndSelectedMessagesRemainBoundedButCopyFullPayload()
+    public void LargePayloadIsFullyVisibleVirtualizedAndSearchableToTheLastField()
     {
         RunInWindow(window =>
         {
-            var viewModel = (MainViewModel)window.DataContext;
-            var topic = new TopicViewModel("device", "factory/line/device", historyCapacity: 10);
-            var payload = "{\"data\":\"" + new string('x', 2_000_000) + "\"}";
-            var message = Message(payload, "2026-09-30T12:00:00+09:00");
-            topic.Record(message, isLeaf: true, leafTopicWasNew: true);
+            var vm = (MainViewModel)window.DataContext;
+            var topic = new TopicViewModel("device", "factory/line/device", 10);
+            var payload = "{\"data\":\"" + new string('x', 2_000_000) + "\",\"tail\":\"LAST_PAYLOAD_FIELD\"}";
+            var message = Message(payload, "2026-10-01T12:00:00+09:00");
+            topic.Record(message, true, true);
+            vm.SelectedTopic = topic;
+            vm.SelectedHistoryItem = vm.SelectedTopicHistory.Single();
+            var value = (VirtualPayloadViewer)window.FindName("ValueVirtualPayloadViewer");
+            var selected = (VirtualPayloadViewer)window.FindName("SelectedVirtualPayloadViewer");
+            WaitFor(() => value.DisplayText.Length > 2_000_000 && selected.DisplayText.Length > 2_000_000
+                && value.DisplayText.Contains("\"tail\": \"LAST_PAYLOAD_FIELD\"", StringComparison.Ordinal)
+                && selected.DisplayText.Contains("\"tail\": \"LAST_PAYLOAD_FIELD\"", StringComparison.Ordinal));
+            Assert.IsTrue(vm.IsValueVirtualMode);
+            Assert.IsTrue(vm.IsSelectedVirtualMode);
+            StringAssert.Contains(value.DisplayText, "LAST_PAYLOAD_FIELD");
+            StringAssert.Contains(selected.DisplayText, "LAST_PAYLOAD_FIELD");
+            Assert.IsFalse(value.DisplayText.Contains("truncated", StringComparison.Ordinal));
+            Assert.IsFalse(((JsonPayloadViewer)window.FindName("ValuePayloadViewer")).IsActive);
+            selected.Select(2_040, 40);
+            Assert.AreEqual(39, selected.SelectedSourceText.Length);
+            Assert.DoesNotContain('\n', selected.SelectedSourceText);
 
-            viewModel.SelectedTopic = topic;
-            viewModel.SelectedHistoryItem = viewModel.SelectedTopicHistory.Single();
-
-            foreach (var size in new[]
-                     {
-                         new Size(1920, 1080), new Size(1440, 900),
-                         new Size(1366, 768), new Size(1100, 720)
-                     })
+            foreach (var size in new[] { new Size(1920,1080), new Size(1440,900), new Size(1366,768), new Size(1100,720) })
             {
                 window.Width = size.Width;
                 window.Height = size.Height;
                 window.UpdateLayout();
-                Assert.IsGreaterThan(0, ((JsonPayloadViewer)window.FindName("ValuePayloadViewer")).ActualHeight);
-                Assert.IsGreaterThan(0, ((JsonPayloadViewer)window.FindName("SelectedPayloadViewer")).ActualHeight);
+                selected.ScrollToLine(selected.Document.LineCount);
+                PumpDispatcher(TimeSpan.FromMilliseconds(60));
+                selected.ScrollToVerticalOffset(selected.ExtentHeight);
+                PumpDispatcher(TimeSpan.FromMilliseconds(60));
+                Assert.IsGreaterThan(900, selected.Document.LineCount);
+                Assert.IsLessThan(50, selected.TextArea.TextView.VisualLines.Count);
+                Assert.AreEqual(selected.Document.LineCount, selected.TextArea.TextView.VisualLines.Last().LastDocumentLine.LineNumber);
             }
-
-            Assert.IsLessThan(17_000, viewModel.ValuePayloadText.Length);
-            Assert.IsLessThan(17_000, viewModel.SelectedPayloadText.Length);
-            Assert.IsLessThan(17_000, ((JsonPayloadViewer)window.FindName("ValuePayloadViewer")).DisplayText.Length);
+            selected.SetSearchQuery("LAST_PAYLOAD_FIELD");
+            WaitFor(() => selected.SearchMatchCount == 1);
+            Assert.IsGreaterThan(2_000_000, selected.SelectionStart);
+            Assert.AreEqual(selected.DisplayText, ((Button)window.FindName("SelectedCopyButton")).CommandParameter);
             var flags = BindingFlags.NonPublic | BindingFlags.Instance;
-            Assert.AreEqual(payload, typeof(MainViewModel).GetMethod("GetValueCopyText", flags)!.Invoke(
-                viewModel, new object[] { ((JsonPayloadViewer)window.FindName("ValuePayloadViewer")).DisplayText }));
-            Assert.AreEqual(payload, typeof(MainViewModel).GetMethod("GetSelectedCopyText", flags)!.Invoke(
-                viewModel, new object[] { ((JsonPayloadViewer)window.FindName("SelectedPayloadViewer")).DisplayText }));
+            Assert.AreEqual(selected.DisplayText, typeof(MainViewModel).GetMethod("GetSelectedCopyText", flags)!.Invoke(vm, new object[] { selected.DisplayText }));
+
+            selected.WordWrap = true;
+            window.UpdateLayout();
+            selected.ClearSearch();
+            vm.ShowValueDiffCommand.Execute(null);
+            WaitFor(() => value.DisplayText.Contains("Comparing with previous message", StringComparison.Ordinal));
+            Assert.IsTrue(value.UseDiff);
+            vm.SelectedTopic = new TopicViewModel("small", "factory/small", 10);
+            PumpDispatcher(TimeSpan.FromMilliseconds(150));
+            Assert.IsFalse(vm.IsValueVirtualMode);
+            Assert.AreEqual(string.Empty, vm.ValuePayloadText);
+        });
+    }
+
+    private static void WaitFor(Func<bool> condition)
+    {
+        var deadline = System.Diagnostics.Stopwatch.StartNew();
+        while (!condition() && deadline.Elapsed < TimeSpan.FromSeconds(10))
+            PumpDispatcher(TimeSpan.FromMilliseconds(30));
+        Assert.IsTrue(condition(), "Background document preparation/search must complete.");
+    }
+
+    [TestMethod]
+    public void FullMegabyteStreamKeepsDispatcherInputResponsive()
+    {
+        RunInWindow(window =>
+        {
+            var vm = (MainViewModel)window.DataContext;
+            var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+            var receive = typeof(MainViewModel).GetMethod("OnMessageReceived", flags)!;
+            var drain = typeof(MainViewModel).GetMethod("DrainPendingMessages", flags)!;
+            var payloads = Enumerable.Range(0, 8).Select(i => "{\"data\":\"" + new string('x', 1_000_000)
+                + "\",\"tail\":\"END_" + i + "\"}").ToArray();
+            receive.Invoke(vm, new object[] { Message(payloads[0], "2026-10-01T12:00:00+09:00") });
+            drain.Invoke(vm, null);
+            vm.SelectedTopic = vm.FindLeafTopic("factory/line/device");
+            using var cancellation = new CancellationTokenSource();
+            var sent = 0;
+            var producer = Task.Run(async () =>
+            {
+                var i = 0;
+                while (!cancellation.IsCancellationRequested)
+                {
+                    receive.Invoke(vm, new object[] { new MqttMessageSnapshot("factory/line/device", payloads[i++ % payloads.Length], DateTimeOffset.UtcNow, 0, false) });
+                    Interlocked.Increment(ref sent);
+                    await Task.Delay(5);
+                }
+            });
+            var ticks = 0;
+            var largestGap = TimeSpan.Zero;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var last = clock.Elapsed;
+            var input = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(20) };
+            input.Tick += (_, _) =>
+            {
+                ticks++;
+                var now = clock.Elapsed;
+                if (now - last > largestGap) largestGap = now - last;
+                last = now;
+            };
+            input.Start();
+            try { PumpDispatcher(TimeSpan.FromSeconds(2)); }
+            finally { input.Stop(); cancellation.Cancel(); producer.GetAwaiter().GetResult(); }
+            Assert.IsGreaterThan(20, ticks);
+            Assert.IsLessThan(TimeSpan.FromMilliseconds(750), largestGap);
+            Console.WriteLine($"1 MB source / requested 5 ms interval: messages={sent}, input ticks={ticks}, maximum input gap={largestGap.TotalMilliseconds:0.0} ms");
+            var viewer = (VirtualPayloadViewer)window.FindName("ValueVirtualPayloadViewer");
+            WaitFor(() => viewer.DisplayText.Length > 1_000_000);
+            StringAssert.Contains(viewer.DisplayText, "END_");
         });
     }
 

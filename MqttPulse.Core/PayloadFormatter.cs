@@ -1,54 +1,28 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Nodes;
+using System.IO;
 using System.Text;
 
 namespace MqttPulse.Core;
 
 public static class PayloadFormatter
 {
-    private static readonly JsonSerializerOptions DisplayJsonOptions = new()
-    {
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
-
-    public static PayloadFormatResult Format(string payload, int previewLimit = 160, int displayLimit = 1_000_000)
+    public static PayloadFormatResult Format(string payload, int previewLimit = 160)
     {
         if (previewLimit <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(previewLimit), "Preview limit must be greater than zero.");
         }
 
-        if (displayLimit <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(displayLimit), "Display limit must be greater than zero.");
-        }
-
         var preview = BuildPreview(payload, previewLimit);
-        if (payload.Length > displayLimit)
-        {
-            return new PayloadFormatResult(
-                preview,
-                payload[..displayLimit] + Environment.NewLine + "... preview truncated (Copy copies the full payload)",
-                false,
-                true);
-        }
-
         var isJson = TryFormatJson(payload, out var jsonText);
         var display = isJson ? jsonText! : payload;
-
-        var truncated = display.Length > displayLimit;
-        if (truncated)
-        {
-            display = display[..displayLimit] + Environment.NewLine + "... truncated in viewer";
-        }
 
         return new PayloadFormatResult(
             preview,
             display,
             isJson,
-            truncated);
+            IsTruncated: false);
     }
 
     public static string BuildPreview(string payload, int previewLimit)
@@ -98,17 +72,17 @@ public static class PayloadFormatter
     {
         try
         {
-            var node = JsonNode.Parse(payload);
-            if (node is null)
+            using var document = JsonDocument.Parse(payload);
+            using var buffer = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions
             {
-                formatted = null;
-                return false;
+                Indented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            }))
+            {
+                WriteElement(document.RootElement, writer, 0);
             }
-
-            // Some MQTT payloads embed full JSON arrays/objects inside string fields.
-            // Expanding those strings keeps detail views readable instead of showing escaped quotes.
-            var normalized = ExpandNestedJsonStrings(node);
-            formatted = normalized.ToJsonString(DisplayJsonOptions);
+            formatted = Encoding.UTF8.GetString(buffer.GetBuffer(), 0, checked((int)buffer.Length));
             return true;
         }
         catch (JsonException)
@@ -118,59 +92,43 @@ public static class PayloadFormatter
         }
     }
 
-    private static JsonNode ExpandNestedJsonStrings(JsonNode node)
+    private static void WriteElement(JsonElement element, Utf8JsonWriter writer, int depth)
     {
-        if (node is JsonObject jsonObject)
+        switch (element.ValueKind)
         {
-            var expanded = new JsonObject();
-            foreach (var property in jsonObject)
-            {
-                expanded[property.Key] = property.Value is null
-                    ? null
-                    : ExpandNestedJsonStrings(property.Value);
-            }
-
-            return expanded;
-        }
-
-        if (node is JsonArray jsonArray)
-        {
-            var expanded = new JsonArray();
-            foreach (var item in jsonArray)
-            {
-                expanded.Add(item is null ? null : ExpandNestedJsonStrings(item));
-            }
-
-            return expanded;
-        }
-
-        if (node is JsonValue jsonValue && jsonValue.TryGetValue<string>(out var stringValue))
-        {
-            var trimmed = stringValue.Trim();
-            if (LooksLikeJson(trimmed) && TryParseJsonNode(trimmed, out var nestedNode))
-            {
-                return ExpandNestedJsonStrings(nestedNode!);
-            }
-        }
-
-        return node.DeepClone();
-    }
-
-    private static bool LooksLikeJson(string value) =>
-        value.Length >= 2
-        && ((value[0] == '{' && value[^1] == '}') || (value[0] == '[' && value[^1] == ']'));
-
-    private static bool TryParseJsonNode(string value, out JsonNode? node)
-    {
-        try
-        {
-            node = JsonNode.Parse(value);
-            return node is not null;
-        }
-        catch (JsonException)
-        {
-            node = null;
-            return false;
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (var property in element.EnumerateObject())
+                {
+                    writer.WritePropertyName(property.Name);
+                    WriteElement(property.Value, writer, depth + 1);
+                }
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var item in element.EnumerateArray()) WriteElement(item, writer, depth + 1);
+                writer.WriteEndArray();
+                break;
+            case JsonValueKind.String:
+                var text = element.GetString()!;
+                var trimmed = text.AsSpan().Trim();
+                if (depth < 32 && trimmed.Length >= 2
+                    && ((trimmed[0] == '{' && trimmed[^1] == '}') || (trimmed[0] == '[' && trimmed[^1] == ']')))
+                {
+                    JsonDocument? nested = null;
+                    try { nested = JsonDocument.Parse(text); } catch (JsonException) { }
+                    if (nested is not null)
+                    {
+                        using (nested) WriteElement(nested.RootElement, writer, depth + 1);
+                        break;
+                    }
+                }
+                writer.WriteStringValue(text);
+                break;
+            default:
+                element.WriteTo(writer);
+                break;
         }
     }
 }

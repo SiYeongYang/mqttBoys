@@ -97,7 +97,7 @@ public sealed class LiveUpdatePerformanceTests
     }
 
     [TestMethod]
-    public void LargeBurstKeepsTheQueueBoundedAndTheSelectedPreviewSmall()
+    public void LargeBurstKeepsTheQueueBoundedWithoutTruncatingTheSelectedPayload()
     {
         using var viewModel = new MainViewModel();
         var receive = GetPrivateMethod("OnMessageReceived");
@@ -125,7 +125,8 @@ public sealed class LiveUpdatePerformanceTests
         viewModel.SelectedTopic = topic;
         stopwatch.Stop();
         Assert.IsLessThan(TimeSpan.FromSeconds(2), stopwatch.Elapsed);
-        Assert.IsLessThan(17_000, viewModel.ValuePayloadText.Length);
+        Assert.AreEqual(payload, viewModel.ValuePayloadText);
+        Assert.IsTrue(viewModel.IsValueVirtualMode);
         Assert.HasCount(5, viewModel.SelectedTopicHistory);
     }
 
